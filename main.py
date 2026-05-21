@@ -45,7 +45,7 @@ class Meka:
         return False
     
     def cool_down(self):
-        self.heat -= 60
+        self.heat -= 50
         if self.heat < 0:
             self.heat = 0
 
@@ -94,7 +94,7 @@ while player.is_alive() and enemy.is_alive():
 
     if choice == "1":
         if player.ammo > 0 and not player.overheat():
-            damage = player.attack + random.randint(-5, 5)
+            damage = player.attack + random.randint(-4, 5)
             enemy.take_damage(damage)
             player.ammo -= 1
             print(f"You attacked the enemy for {damage} damage!")
@@ -127,5 +127,7 @@ while player.is_alive() and enemy.is_alive():
 clear_screen()
 if player.is_alive():
     print("Congratulations! You have defeated the enemy Meka!")
+    input("\nPress Enter to exit...")
 else:
     print("Game Over! The enemy Meka has defeated you!")
+    input("\nPress Enter to exit...")
