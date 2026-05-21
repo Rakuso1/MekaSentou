@@ -72,13 +72,14 @@ class Meka:
 player = Meka("Player Meka", 100, 0, 50, 50, 10, 5)
 enemy = Meka("Enemy Meka", 100, 0, 50, 50, 10, 5)
 
+print("========================")
+print("      メカ戦闘")
+print("========================")
+
+input("\nPress Enter to battle...")
+
 while player.is_alive() and enemy.is_alive():
 
-    print("========================")
-    print("      メカ戦闘")
-    print("========================")
-
-    input("\nPress Enter to battle...")
 
     clear_screen()
 
