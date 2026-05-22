@@ -2,6 +2,7 @@
 
 A basic 1 vs 1 Meka battle game, deplete the power of the rival Meka.
 
+<img width="1116" height="628" alt="Recording 2026-05-21 210747" src="https://github.com/user-attachments/assets/588d2da3-cb06-4bc0-9a99-e3a3532feb0d" />
 
 ## How to play
 
@@ -43,5 +44,5 @@ That's it — good luck, pilot!
 
 NumberKey + Enter
 
-## Licence
+## License
 GNU General Public License
