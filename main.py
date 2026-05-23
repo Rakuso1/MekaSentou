@@ -80,12 +80,13 @@ class Meka:
             if self.power < 0:
                 self.power = 0
 
-    def overheat(self):
+    def check_overheat(self):
+        return self.heat + random.randint(10, 15) > 100
+    
+    def apply_heat(self):
         self.heat += random.randint(10, 15)
         if self.heat > 100:
             self.heat = 100
-            return True
-        return False
     
     def cool_down(self):
         self.heat -= 50
@@ -165,7 +166,8 @@ while player.is_alive() and enemy.is_alive():
         }
         ammo_type = ammo_map.get(ammo_choice)
 
-        if ammo_type and player.has_ammo(ammo_type) and not player.overheat():
+        if player.has_ammo(ammo_type) and not player.check_overheat():
+            player.apply_heat()
             damage = player.attack + random.randint(-2, 5)
             if ammo_type == "standard" and random.random() < STANDARD_CRIT_CHANCE:
                 damage *= 3
@@ -174,6 +176,7 @@ while player.is_alive() and enemy.is_alive():
             player.consume_ammo(ammo_type)
             print(f"You fired {ammo_type.replace('_', ' ')} ammo for {damage} damage!")
         else:
+            player.apply_heat()
             print("You cannot attack! Choose a valid ammo type, and make sure you have rounds and are not overheated.")
 
     elif choice == "2":
@@ -207,7 +210,8 @@ while player.is_alive() and enemy.is_alive():
 
     if enemy.is_alive():
         available_ammo = enemy.available_ammo_types()
-        if available_ammo and not enemy.overheat():
+        if available_ammo and not enemy.check_overheat():
+            enemy.apply_heat()
             ammo_type = random.choice(available_ammo)
             damage = enemy.attack + random.randint(-2, 5)
             if ammo_type == "standard" and random.random() < STANDARD_CRIT_CHANCE:
@@ -217,6 +221,7 @@ while player.is_alive() and enemy.is_alive():
             enemy.consume_ammo(ammo_type)
             print(f"The enemy fired {ammo_type.replace('_', ' ')} ammo for {damage} damage!")
         else:
+            enemy.apply_heat()
             print("The enemy cannot attack! Either they are out of ammo or they have overheated.")
             enemy.cool_down()
             enemy.recharge_ammo("standard")
