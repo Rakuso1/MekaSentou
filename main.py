@@ -125,12 +125,12 @@ player = Meka("Player Meka", 100, 0, 50, 50, {
     "standard": 5,
     "armor_piercing": 2,
     "shield_breaker": 3,
-}, 10)
+}, 5)
 enemy = Meka("Enemy Meka", 100, 0, 50, 50, {
     "standard": 5,
     "armor_piercing": 2,
     "shield_breaker": 3,
-}, 10)
+}, 5)
 
 print("========================")
 print("      メカ戦闘")
@@ -167,7 +167,7 @@ while player.is_alive() and enemy.is_alive():
         ammo_type = ammo_map.get(ammo_choice)
 
         if ammo_type and player.has_ammo(ammo_type) and not player.overheat():
-            damage = player.attack + random.randint(-4, 5)
+            damage = player.attack + random.randint(-2, 5)
             if ammo_type == "standard" and random.random() < STANDARD_CRIT_CHANCE:
                 damage *= 3
                 print("Hit a vulnerable point!")
@@ -210,7 +210,7 @@ while player.is_alive() and enemy.is_alive():
         available_ammo = enemy.available_ammo_types()
         if available_ammo and not enemy.overheat():
             ammo_type = random.choice(available_ammo)
-            damage = enemy.attack + random.randint(-4, 5)
+            damage = enemy.attack + random.randint(-2, 5)
             if ammo_type == "standard" and random.random() < STANDARD_CRIT_CHANCE:
                 damage *= 3
                 print("The enemy hit a vulnerable point!")
