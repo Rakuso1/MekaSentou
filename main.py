@@ -5,6 +5,12 @@ import math
 
 STANDARD_CRIT_CHANCE = 0.10 # 10% chance for standard ammo to critically hit
 
+AMMO_TYPES = {
+    "1": "standard",
+    "2": "armor_piercing",
+    "3": "shield_breaker",
+}
+
 def clear_screen():
     os.system('cls' if os.name == 'nt' else 'clear')
 
@@ -140,18 +146,7 @@ class Game:
         choice = input(">> ")
 
         if choice == "1":
-            print("\nChoose ammo type:")
-            print("1. Standard - Can Critically Hit")
-            print("2. Armor Piercing - Double Damage to Armor")
-            print("3. Shield Breaker - Double Damage to Shields")
-            ammo_choice = input(">> ")
-            ammo_map = {
-                "1": "standard",
-                "2": "armor_piercing",
-                "3": "shield_breaker",
-            }
-            ammo_type = ammo_map.get(ammo_choice)
-
+            ammo_type = self.pick_ammo()
             if self.player.has_ammo(ammo_type) and not self.player.check_overheat():
                 self.player.apply_heat()
                 damage = self.player.attack + random.randint(-2, 5)
@@ -170,18 +165,7 @@ class Game:
             print("You cooled down your Meka!")
 
         elif choice == "3":
-            print("\nChoose ammo type to reload:")
-            print("1. Standard")
-            print("2. Armor Piercing")
-            print("3. Shield Breaker")
-            ammo_choice = input(">> ")
-            ammo_map = {
-                "1": "standard",
-                "2": "armor_piercing",
-                "3": "shield_breaker",
-            }
-            ammo_type = ammo_map.get(ammo_choice)
-
+            ammo_type = self.pick_ammo()
             if ammo_type:
                 self.player.recharge_ammo(ammo_type)
                 print(f"You reloaded {ammo_type.replace('_', ' ')} ammo!")
@@ -209,6 +193,14 @@ class Game:
             print("The enemy cannot attack! Either they are out of ammo or they have overheated.")
             self.enemy.cool_down()
             self.enemy.recharge_ammo("standard")
+
+    def pick_ammo(self):
+        print("\nChoose ammo type:")
+        print("1. Standard - Can Critically Hit")
+        print("2. Armor Piercing - Double Damage to Armor")
+        print("3. Shield Breaker - Double Damage to Shields")
+        ammo_choice = input(">> ")
+        return AMMO_TYPES.get(ammo_choice)
 
 def main():
     print("========================")
