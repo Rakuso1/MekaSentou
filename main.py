@@ -52,27 +52,27 @@ class Meka:
 
         # Apply to shield layer first. If the shield is reduced to 0, leftover damage is lost.
         if base_damage > 0 and self.shield > 0 and m_shield > 0:
-            potential = base_damage * m_shield
-            absorbed = min(self.shield, potential)
-            self.shield -= absorbed
+            potencial_damage = base_damage * m_shield
+            real_damage = min(self.shield, potencial_damage)
+            self.shield -= real_damage
             # If shield broke, base_damage damage is discarded
-            if self.shield == 0 and absorbed > 0:
+            if self.shield == 0 and real_damage > 0:
                 base_damage = 0
             else:
-                absorbed_base = math.ceil(absorbed / m_shield)
-                base_damage = max(0, base_damage - absorbed_base)
+                real_damage_base = math.ceil(real_damage / m_shield)
+                base_damage = max(0, base_damage - real_damage_base)
 
         # Apply to armor layer. If the armor is reduced to 0, leftover damage is lost.
         if base_damage > 0 and self.armor > 0 and m_armor > 0:
-            potential = base_damage * m_armor
-            absorbed = min(self.armor, potential)
-            self.armor -= absorbed
+            potencial_damage = base_damage * m_armor
+            real_damage = min(self.armor, potencial_damage)
+            self.armor -= real_damage
             # If armor broke, base_damage damage is discarded
-            if self.armor == 0 and absorbed > 0:
+            if self.armor == 0 and real_damage > 0:
                 base_damage = 0
             else:
-                absorbed_base = math.ceil(absorbed / m_armor)
-                base_damage = max(0, base_damage - absorbed_base)
+                real_damage_base = math.ceil(real_damage / m_armor)
+                base_damage = max(0, base_damage - real_damage_base)
 
         if base_damage > 0:
             self.power -= base_damage
