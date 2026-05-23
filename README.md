@@ -1,48 +1,72 @@
 # メカ戦闘
 
-A basic 1 vs 1 Meka battle game, deplete the power of the rival Meka.
+A 1v1 meka battle game where you must deplete the rival meka's power.
 
-<img width="1116" height="628" alt="Recording 2026-05-21 210747" src="https://github.com/user-attachments/assets/588d2da3-cb06-4bc0-9a99-e3a3532feb0d" />
+<img width="1116" height="628" alt="Recording 2026-05-21 210747" src="https://github.com/user-attachments/assets/5911bbd1-d453-4266-8369-21794e5a4503" />
 
-## How to play
+## How to Play
 
-Objective:
-- Defeat the enemy Meka by reducing its Power to 0.
+### Objective
+- Defeat the enemy meka by reducing its Power to 0.
 
-Stats:
-- Power: Your Meka's health (max 100). If it reaches 0 you lose.
-- Heat: Weapon/system heat (0–100). Attacking increases heat; at 100 you cannot attack.
-- Armor: Secondary buffer that absorbs damage after Shield (max shown as 50).
-- Shield: First layer that absorbs incoming damage (max shown as 50).
-- Ammo: Number of attacks you can perform (max 10).
+### Stats
+- **Power:** Your meka's health (max 100). If it reaches 0, you lose.
+- **Heat:** Weapon/system heat level (0–100). Attacking increases heat; at 100, you cannot attack.
+- **Armor:** A secondary buffer that absorbs damage after Shields.
+- **Shield:** The first layer that absorbs incoming damage.
+- **Ammo:** The number of attacks you can perform.
 
-Actions (choose by entering the number):
-1) Attack
-- Consumes 1 ammo and triggers a heat increase.
-- The game first subtracts damage from Shield, then Armor, then Power.
-- If your Heat reaches 100 from attacking, your Meka overheats and cannot attack until cooled.
+### Actions
+Choose an action by entering its corresponding number.
 
-2) Cool Down
-- Reduces Heat by a large amount (helps recover from near-overheat).
-- Use this when Heat is high to avoid being unable to attack.
+#### 1) Attack
+- Consumes 1 ammo and increases Heat.
+- Choose between 3 ammo types: Standard, Armor Piercing, and Shield Breaker.
+- Standard ammo can land critical hits.
+- Armor Piercing and Shield Breaker deal double damage to their corresponding defenses.
+- Damage is applied in this order: Shield → Armor → Power.
+- If your Heat reaches 100 after attacking, your meka overheats and cannot attack until it cools down.
 
-3) Recharge Ammo
-- Refills Ammo (up to the maximum of 10).
-- Use when you're low on ammo and cannot attack.
+#### 2) Cool Down
+- Reduces Heat by a large amount.
+- Use this when Heat is high to avoid overheating.
 
-Enemy Behavior:
-- The enemy has the same actions and rules as the player: it uses ammo to attack, gains heat when attacking, and will cool down and recharge if it cannot attack.
+#### 3) Recharge Ammo
+- Refills ammo: 10 Standard rounds or 2 Shield Breaker / Armor Piercing rounds.
+- Use this when you are low on ammo and cannot attack.
 
-Tips and Strategy:
-- Balance attacking and cooling: spam attacks early, but cool before Heat reaches 100.
-- Manage Ammo: recharge when low so you can continue attacking.
-- Watch the bars shown on-screen to make informed choices.
+#### 4) Recharge Shields
+- Redirects 20% of your Power to recharge Shields by 80%.
+
+### Enemy Behavior
+- The enemy follows the same rules as the player.
+- It uses ammo to attack, gains heat when attacking, and will cool down and recharge when necessary.
+
+### Tips and Strategy
+- Balance attacking and cooling down. Spam attacks early, but cool down before Heat reaches 100.
+- Manage your ammo carefully so you can continue attacking.
+- Use Recharge Shields carefully; it will deplete your Power.
+- Watch the status bars on-screen to make informed decisions.
 
 That's it — good luck, pilot!
 
 ## Controls
 
-NumberKey + Enter
+- Number key + Enter
+
+## Installation
+
+### Windows
+- Download the `.zip` file from Releases, extract it, and run `mekasentou.exe`.
+
+### Linux
+
+```bash
+git clone https://github.com/Rakuso1/MekaSentou.git
+cd MekaSentou
+python main.py
+```
 
 ## License
+
 GNU General Public License
