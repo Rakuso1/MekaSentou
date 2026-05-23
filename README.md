@@ -36,17 +36,11 @@ Choose an action by entering its corresponding number.
 - Use this when you are low on ammo and cannot attack.
 
 #### 4) Recharge Shields
-- Redirects 20% of your Power to recharge Shields by 80%.
+- Redirects 20% of your current Power to recharge 50% of missing Shields.
 
 ### Enemy Behavior
 - The enemy follows the same rules as the player.
 - It uses ammo to attack, gains heat when attacking, and will cool down and recharge when necessary.
-
-### Tips and Strategy
-- Balance attacking and cooling down. Spam attacks early, but cool down before Heat reaches 100.
-- Manage your ammo carefully so you can continue attacking.
-- Use Recharge Shields carefully; it will deplete your Power.
-- Watch the status bars on-screen to make informed decisions.
 
 That's it — good luck, pilot!
 
@@ -61,9 +55,10 @@ That's it — good luck, pilot!
 
 ### Linux
 
+- Download the `Source code (zip)` file from Releases. 
 ```bash
-git clone https://github.com/Rakuso1/MekaSentou.git
-cd MekaSentou
+unzip MekaSentou-0.2.0.zip
+cd MekaSentou-0.2.0
 python main.py
 ```
 

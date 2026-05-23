@@ -3,8 +3,7 @@ import time
 import os
 import math
 
-# Chance for standard ammo to score a critical hit
-STANDARD_CRIT_CHANCE = 0.10
+STANDARD_CRIT_CHANCE = 0.10 # 10% chance for standard ammo to critically hit
 
 def clear_screen():
     os.system('cls' if os.name == 'nt' else 'clear')
@@ -15,7 +14,9 @@ class Meka:
         self.power = power
         self.heat = heat
         self.armor = armor
+        self.max_armor = armor
         self.shield = shield
+        self.max_shield = shield
         self.ammo = ammo
         self.attack = attack
 
@@ -91,14 +92,12 @@ class Meka:
         if self.heat < 0:
             self.heat = 0
 
-    def recharge_shield(self, power_used):
-        recharge_amount = math.ceil(power_used * 0.2)
-        self.shield += recharge_amount * 2
-        if self.shield > 50:
-            self.shield = 50
-        self.power -= recharge_amount
-        if self.power < 0:
-            self.power = 0
+    def recharge_shield(self):
+        cost = math.ceil(self.power * 0.2) # Cost is 20% of current power, rounded up
+        missing_shield = self.max_shield - self.shield
+        gain = math.ceil(missing_shield * 0.5) # Gain is 50% of missing shield, rounded up
+        self.power = max(0, self.power - cost) 
+        self.shield = min(self.shield + gain, self.max_shield) 
 
     def make_bar(self, value, max_value):
         bar_length = 10
@@ -111,8 +110,8 @@ class Meka:
         print(f"\n{self.name}")
         print(f"Power:  [{self.make_bar(self.power, 100)}] {self.power}/100")
         print(f"Heat:   [{self.make_bar(self.heat, 100)}] {self.heat}/100")
-        print(f"Armor:  [{self.make_bar(self.armor, 50)}] {self.armor}/50")
-        print(f"Shield: [{self.make_bar(self.shield, 50)}] {self.shield}/50")
+        print(f"Armor:  [{self.make_bar(self.armor, self.max_armor)}] {self.armor}/{self.max_armor}")
+        print(f"Shield: [{self.make_bar(self.shield, self.max_shield)}] {self.shield}/{self.max_shield}")
         print(f"Ammo:   {self.ammo_total()}")
         print(f"  Standard:        [{self.make_bar(self.ammo.get('standard', 0), 10)}] {self.ammo.get('standard', 0)}/10")
         print(f"  Armor Piercing:   [{self.make_bar(self.ammo.get('armor_piercing', 0), 10)}] {self.ammo.get('armor_piercing', 0)}/10")
@@ -201,7 +200,7 @@ while player.is_alive() and enemy.is_alive():
             print("Invalid ammo type.")
 
     elif choice == "4":
-        player.recharge_shield(player.power)
+        player.recharge_shield()
         print("You redirected power to recharge your shields")
 
     time.sleep(2)
