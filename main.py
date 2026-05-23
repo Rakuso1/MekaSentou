@@ -103,8 +103,8 @@ class Meka:
         print(f"\n{self.name}")
         print(f"Power:  [{self.make_bar(self.power, 100)}] {self.power}/100")
         print(f"Heat:   [{self.make_bar(self.heat, 100)}] {self.heat}/100")
-        print(f"Armor:  [{self.make_bar(self.armor, 50)}] {self.armor}/50")
         print(f"Shield: [{self.make_bar(self.shield, 50)}] {self.shield}/50")
+        print(f"Armor:  [{self.make_bar(self.armor, 50)}] {self.armor}/50")
         print(f"Ammo:   {self.ammo_total()}")
         print(f"  Standard:        [{self.make_bar(self.ammo.get('standard', 0), 10)}] {self.ammo.get('standard', 0)}/10")
         print(f"  Shield Breaker:   [{self.make_bar(self.ammo.get('shield_breaker', 0), 10)}] {self.ammo.get('shield_breaker', 0)}/10")
@@ -148,7 +148,7 @@ while player.is_alive() and enemy.is_alive():
         print("\nChoose ammo type:")
         print("1. Standard - Can Critically Hit")
         print("2. Shield Breaker - Double Damage to Shields")
-        print("3. Armor Piercing - Double Damage to armor")
+        print("3. Armor Piercing - Double Damage to Armor")
         ammo_choice = input(">> ")
         ammo_map = {
             "1": "standard",
