@@ -41,44 +41,29 @@ class Meka:
     
 
     def take_damage(self, damage, ammo_type="standard"):
-        base_damage = damage
-
-        # Multipliers: the ammo type deals double (2x) to its respective defense
-        m_shield = 1
-        m_armor = 1
-        if ammo_type == "shield_breaker":
-            m_shield = 2
-        elif ammo_type == "armor_piercing":
-            m_armor = 2
+        shield_multiplier = 2 if ammo_type == "shield_breaker" else 1
+        armor_multiplier = 2 if ammo_type == "armor_piercing" else 1
 
         # Apply to shield layer first. If the shield is reduced to 0, leftover damage is lost.
-        if base_damage > 0 and self.shield > 0 and m_shield > 0:
-            potencial_damage = base_damage * m_shield
-            real_damage = min(self.shield, potencial_damage)
-            self.shield -= real_damage
-            # If shield broke, base_damage damage is discarded
-            if self.shield == 0 and real_damage > 0:
-                base_damage = 0
-            else:
-                real_damage_base = math.ceil(real_damage / m_shield)
-                base_damage = max(0, base_damage - real_damage_base)
+        if damage > 0 and self.shield > 0:
+            damage = self._absorb(damage, "shield", shield_multiplier)
 
         # Apply to armor layer. If the armor is reduced to 0, leftover damage is lost.
-        if base_damage > 0 and self.armor > 0 and m_armor > 0:
-            potencial_damage = base_damage * m_armor
-            real_damage = min(self.armor, potencial_damage)
-            self.armor -= real_damage
-            # If armor broke, base_damage damage is discarded
-            if self.armor == 0 and real_damage > 0:
-                base_damage = 0
-            else:
-                real_damage_base = math.ceil(real_damage / m_armor)
-                base_damage = max(0, base_damage - real_damage_base)
+        if damage > 0 and self.armor > 0:
+            damage = self._absorb(damage, "armor", armor_multiplier)
 
-        if base_damage > 0:
-            self.power -= base_damage
-            if self.power < 0:
-                self.power = 0
+        if damage > 0:
+            self.power = max(0, self.power - damage)
+
+    def _absorb(self, damage, layer, multiplier):
+        current = getattr(self, layer)
+        effective_damage = min(current, damage * multiplier)
+        setattr(self, layer, current - effective_damage)
+
+        if getattr(self, layer) == 0:
+            return 0
+        else:
+            return max(0, damage - math.ceil(effective_damage / multiplier))
 
     def check_overheat(self):
         return self.heat + random.randint(10, 15) > 100
