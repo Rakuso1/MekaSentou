@@ -47,7 +47,6 @@ class Meka:
     def is_alive(self):
         return self.power > 0
     
-
     def take_damage(self, damage, ammo_type="standard"):
         shield_multiplier = 2 if ammo_type == "shield_breaker" else 1
         armor_multiplier = 2 if ammo_type == "armor_piercing" else 1
@@ -74,7 +73,7 @@ class Meka:
             return max(0, damage - math.ceil(effective_damage / multiplier))
 
     def check_overheat(self):
-        return self.heat + random.randint(10, 15) > 100
+        return self.heat >= 100
     
     def apply_heat(self):
         self.heat += random.randint(10, 15)
@@ -147,22 +146,18 @@ class Game:
 
         if choice == "1":
             ammo_type = self.pick_ammo()
-            if self.player.has_ammo(ammo_type) and not self.player.check_overheat():
-                self.player.apply_heat()
-                damage = self.player.attack + random.randint(-2, 5)
-                if ammo_type == "standard" and random.random() < STANDARD_CRIT_CHANCE:
-                    damage *= 3
-                    print("Hit a vulnerable point!")
-                self.enemy.take_damage(damage, ammo_type)
-                self.player.consume_ammo(ammo_type)
-                print(f"You fired {ammo_type.replace('_', ' ')} ammo for {damage} damage!")
+            if ammo_type and self.player.has_ammo(ammo_type):
+                if not self.player.check_overheat():
+                    self.do_attack(self.player, self.enemy, ammo_type)
+                    self.player.apply_heat()
+                else:
+                    print("MEKA OVERHEATED!")
             else:
-                self.player.apply_heat()
-                print("You cannot attack! Choose a valid ammo type, and make sure you have rounds and are not overheated.")
+                print("OUT OF AMMO.")
 
         elif choice == "2":
             self.player.cool_down()
-            print("You cooled down your Meka!")
+            print("MEKA COOLED DOWN!")
 
         elif choice == "3":
             ammo_type = self.pick_ammo()
@@ -174,25 +169,36 @@ class Game:
 
         elif choice == "4":
             self.player.recharge_shield()
-            print("You redirected power to recharge your shields")
+            print("POWER REDISTRIBUTED TO SHIELDS!")
+
+        else:
+            print("Invalid action. Turn skipped.")
 
     def enemy_turn(self):
         available_ammo = self.enemy.available_ammo_types()
         if available_ammo and not self.enemy.check_overheat():
-            self.enemy.apply_heat()
             ammo_type = random.choice(available_ammo)
-            damage = self.enemy.attack + random.randint(-2, 5)
-            if ammo_type == "standard" and random.random() < STANDARD_CRIT_CHANCE:
-                damage *= 3
-                print("The enemy hit a vulnerable point!")
-            self.player.take_damage(damage, ammo_type)
-            self.enemy.consume_ammo(ammo_type)
-            print(f"The enemy fired {ammo_type.replace('_', ' ')} ammo for {damage} damage!")
-        else:
+            self.do_attack(self.enemy, self.player, ammo_type)
             self.enemy.apply_heat()
+        else:
             print("The enemy cannot attack! Either they are out of ammo or they have overheated.")
             self.enemy.cool_down()
             self.enemy.recharge_ammo("standard")
+
+    def do_attack(self, attacker, defender, ammo_type):
+        damage = attacker.attack + random.randint(-2, 5)
+        if ammo_type == "standard" and random.random() < STANDARD_CRIT_CHANCE:
+            damage *= 3
+            if attacker is self.player:
+                print("You hit a vulnerable point!")
+            else:
+                print("The enemy hit a vulnerable point!")
+        defender.take_damage(damage, ammo_type)
+        attacker.consume_ammo(ammo_type)
+        if attacker is self.player:
+            print(f"You fired {ammo_type.replace('_', ' ')} ammo for {damage} damage!")
+        else:
+            print(f"The enemy fired {ammo_type.replace('_', ' ')} ammo for {damage} damage!")
 
     def pick_ammo(self):
         print("\nChoose ammo type:")
