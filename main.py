@@ -3,8 +3,13 @@ import time
 import os
 import math
 
-# Chance for standard ammo to score a critical hit
-STANDARD_CRIT_CHANCE = 0.10
+STANDARD_CRIT_CHANCE = 0.10 # 10% chance for standard ammo to critically hit
+
+AMMO_TYPES = {
+    "1": "standard",
+    "2": "armor_piercing",
+    "3": "shield_breaker",
+}
 
 def clear_screen():
     os.system('cls' if os.name == 'nt' else 'clear')
@@ -13,9 +18,13 @@ class Meka:
     def __init__(self, name, power, heat, armor, shield, ammo, attack):
         self.name = name
         self.power = power
+        self.max_power = power
         self.heat = heat
+        self.max_heat = 100
         self.armor = armor
+        self.max_armor = armor
         self.shield = shield
+        self.max_shield = shield
         self.ammo = ammo
         self.attack = attack
 
@@ -38,67 +47,48 @@ class Meka:
     def is_alive(self):
         return self.power > 0
     
-
     def take_damage(self, damage, ammo_type="standard"):
-        base_damage = damage
-
-        # Multipliers: the ammo type deals double (2x) to its respective defense
-        m_shield = 1
-        m_armor = 1
-        if ammo_type == "shield_breaker":
-            m_shield = 2
-        elif ammo_type == "armor_piercing":
-            m_armor = 2
+        shield_multiplier = 2 if ammo_type == "shield_breaker" else 1
+        armor_multiplier = 2 if ammo_type == "armor_piercing" else 1
 
         # Apply to shield layer first. If the shield is reduced to 0, leftover damage is lost.
-        if base_damage > 0 and self.shield > 0 and m_shield > 0:
-            potencial_damage = base_damage * m_shield
-            real_damage = min(self.shield, potencial_damage)
-            self.shield -= real_damage
-            # If shield broke, base_damage damage is discarded
-            if self.shield == 0 and real_damage > 0:
-                base_damage = 0
-            else:
-                real_damage_base = math.ceil(real_damage / m_shield)
-                base_damage = max(0, base_damage - real_damage_base)
+        if damage > 0 and self.shield > 0:
+            damage = self._absorb(damage, "shield", shield_multiplier)
 
         # Apply to armor layer. If the armor is reduced to 0, leftover damage is lost.
-        if base_damage > 0 and self.armor > 0 and m_armor > 0:
-            potencial_damage = base_damage * m_armor
-            real_damage = min(self.armor, potencial_damage)
-            self.armor -= real_damage
-            # If armor broke, base_damage damage is discarded
-            if self.armor == 0 and real_damage > 0:
-                base_damage = 0
-            else:
-                real_damage_base = math.ceil(real_damage / m_armor)
-                base_damage = max(0, base_damage - real_damage_base)
+        if damage > 0 and self.armor > 0:
+            damage = self._absorb(damage, "armor", armor_multiplier)
 
-        if base_damage > 0:
-            self.power -= base_damage
-            if self.power < 0:
-                self.power = 0
+        if damage > 0:
+            self.power = max(0, self.power - damage)
 
-    def overheat(self):
+    def _absorb(self, damage, layer, multiplier):
+        current = getattr(self, layer)
+        effective_damage = min(current, damage * multiplier)
+        setattr(self, layer, current - effective_damage)
+
+        if getattr(self, layer) == 0:
+            return 0
+        else:
+            return max(0, damage - math.ceil(effective_damage / multiplier))
+
+    def check_overheat(self):
+        return self.heat >= 100
+    
+    def apply_heat(self):
         self.heat += random.randint(10, 15)
         if self.heat > 100:
             self.heat = 100
-            return True
-        return False
     
     def cool_down(self):
-        self.heat -= 50
-        if self.heat < 0:
-            self.heat = 0
+        self.heat = max(0, self.heat - 50) # Cool down reduces heat by 50
 
-    def recharge_shield(self, power_used):
-        recharge_amount = math.ceil(power_used * 0.2)
-        self.shield += recharge_amount * 2
-        if self.shield > 50:
-            self.shield = 50
-        self.power -= recharge_amount
-        if self.power < 0:
-            self.power = 0
+    def recharge_shield(self):
+        cost = math.ceil(self.power * 0.2) # Cost is 20% of current power, rounded up
+        missing_shield = self.max_shield - self.shield
+        gain = math.ceil(missing_shield * 0.5) # Gain is 50% of missing shield, rounded up
+        self.power = max(0, self.power - cost) 
+        self.shield = min(self.shield + gain, self.max_shield) 
 
     def make_bar(self, value, max_value):
         bar_length = 10
@@ -109,10 +99,10 @@ class Meka:
 
     def display_status(self):
         print(f"\n{self.name}")
-        print(f"Power:  [{self.make_bar(self.power, 100)}] {self.power}/100")
-        print(f"Heat:   [{self.make_bar(self.heat, 100)}] {self.heat}/100")
-        print(f"Armor:  [{self.make_bar(self.armor, 50)}] {self.armor}/50")
-        print(f"Shield: [{self.make_bar(self.shield, 50)}] {self.shield}/50")
+        print(f"Power:  [{self.make_bar(self.power, self.max_power)}] {self.power}/{self.max_power}")
+        print(f"Heat:   [{self.make_bar(self.heat, self.max_heat)}] {self.heat}/{self.max_heat}")
+        print(f"Armor:  [{self.make_bar(self.armor, self.max_armor)}] {self.armor}/{self.max_armor}")
+        print(f"Shield: [{self.make_bar(self.shield, self.max_shield)}] {self.shield}/{self.max_shield}")
         print(f"Ammo:   {self.ammo_total()}")
         print(f"  Standard:        [{self.make_bar(self.ammo.get('standard', 0), 10)}] {self.ammo.get('standard', 0)}/10")
         print(f"  Armor Piercing:   [{self.make_bar(self.ammo.get('armor_piercing', 0), 10)}] {self.ammo.get('armor_piercing', 0)}/10")
@@ -121,113 +111,122 @@ class Meka:
     def available_ammo_types(self):
         return [ammo_type for ammo_type, count in self.ammo.items() if count > 0]
 
-player = Meka("Player Meka", 100, 0, 50, 50, {
-    "standard": 5,
-    "armor_piercing": 2,
-    "shield_breaker": 3,
-}, 5)
-enemy = Meka("Enemy Meka", 100, 0, 50, 50, {
-    "standard": 5,
-    "armor_piercing": 2,
-    "shield_breaker": 3,
-}, 5)
+class Game:
+    def __init__(self, player, enemy):
+        self.player = player
+        self.enemy = enemy
 
-print("========================")
-print("      メカ戦闘")
-print("========================")
+    def run(self):
+        while self.player.is_alive() and self.enemy.is_alive():
+            clear_screen()
+            self.player.display_status()
+            self.enemy.display_status()
+            self.player_turn()
+            time.sleep(2)
+            if self.enemy.is_alive():
+                self.enemy_turn()
+                time.sleep(2)
+        self.end_game()
 
-input("\nPress Enter to battle...")
+    def end_game(self):
+        clear_screen()
+        if self.player.is_alive():
+            print("Congratulations! You have defeated the enemy Meka!")
+        else:
+            print("Game Over! The enemy Meka has defeated you!")
+        input("\nPress Enter to exit...")
 
-while player.is_alive() and enemy.is_alive():
+    def player_turn(self):
+        print("\nChoose your action:")
+        print("1. Attack")
+        print("2. Cool Down")
+        print("3. Recharge Ammo")
+        print("4. Recharge Shields")
+        choice = input(">> ")
 
+        if choice == "1":
+            ammo_type = self.pick_ammo()
+            if ammo_type and self.player.has_ammo(ammo_type):
+                if not self.player.check_overheat():
+                    self.do_attack(self.player, self.enemy, ammo_type)
+                    self.player.apply_heat()
+                else:
+                    print("MEKA OVERHEATED!")
+            else:
+                print("OUT OF AMMO.")
 
-    clear_screen()
+        elif choice == "2":
+            self.player.cool_down()
+            print("MEKA COOLED DOWN!")
 
-    player.display_status()
-    enemy.display_status()
+        elif choice == "3":
+            ammo_type = self.pick_ammo()
+            if ammo_type:
+                self.player.recharge_ammo(ammo_type)
+                print(f"You reloaded {ammo_type.replace('_', ' ')} ammo!")
+            else:
+                print("Invalid ammo type.")
 
-    print("\nChoose your action:")
-    print("1. Attack")
-    print("2. Cool Down")
-    print("3. Recharge Ammo")
-    print("4. Recharge Shields")
-    choice = input(">> ")
+        elif choice == "4":
+            self.player.recharge_shield()
+            print("POWER REDISTRIBUTED TO SHIELDS!")
 
-    if choice == "1":
+        else:
+            print("Invalid action. Turn skipped.")
+
+    def enemy_turn(self):
+        available_ammo = self.enemy.available_ammo_types()
+        if available_ammo and not self.enemy.check_overheat():
+            ammo_type = random.choice(available_ammo)
+            self.do_attack(self.enemy, self.player, ammo_type)
+            self.enemy.apply_heat()
+        else:
+            print("The enemy cannot attack! Either they are out of ammo or they have overheated.")
+            self.enemy.cool_down()
+            self.enemy.recharge_ammo("standard")
+
+    def do_attack(self, attacker, defender, ammo_type):
+        damage = attacker.attack + random.randint(-2, 5)
+        if ammo_type == "standard" and random.random() < STANDARD_CRIT_CHANCE:
+            damage *= 3
+            if attacker is self.player:
+                print("You hit a vulnerable point!")
+            else:
+                print("The enemy hit a vulnerable point!")
+        defender.take_damage(damage, ammo_type)
+        attacker.consume_ammo(ammo_type)
+        if attacker is self.player:
+            print(f"You fired {ammo_type.replace('_', ' ')} ammo for {damage} damage!")
+        else:
+            print(f"The enemy fired {ammo_type.replace('_', ' ')} ammo for {damage} damage!")
+
+    def pick_ammo(self):
         print("\nChoose ammo type:")
         print("1. Standard - Can Critically Hit")
         print("2. Armor Piercing - Double Damage to Armor")
         print("3. Shield Breaker - Double Damage to Shields")
         ammo_choice = input(">> ")
-        ammo_map = {
-            "1": "standard",
-            "2": "armor_piercing",
-            "3": "shield_breaker",
-        }
-        ammo_type = ammo_map.get(ammo_choice)
+        return AMMO_TYPES.get(ammo_choice)
 
-        if ammo_type and player.has_ammo(ammo_type) and not player.overheat():
-            damage = player.attack + random.randint(-2, 5)
-            if ammo_type == "standard" and random.random() < STANDARD_CRIT_CHANCE:
-                damage *= 3
-                print("Hit a vulnerable point!")
-            enemy.take_damage(damage, ammo_type)
-            player.consume_ammo(ammo_type)
-            print(f"You fired {ammo_type.replace('_', ' ')} ammo for {damage} damage!")
-        else:
-            print("You cannot attack! Choose a valid ammo type, and make sure you have rounds and are not overheated.")
+def main():
+    print("========================")
+    print("      メカ戦闘")
+    print("========================")
+    input("\nPress Enter to battle...")
+    
+    player = Meka("Player Meka", 100, 0, 50, 50, {
+        "standard": 5,
+        "armor_piercing": 2,
+        "shield_breaker": 3,
+    }, 5)
+    enemy = Meka("Enemy Meka", 100, 0, 50, 50, {
+        "standard": 5,
+        "armor_piercing": 2,
+        "shield_breaker": 3,
+    }, 5)
 
-    elif choice == "2":
-        player.cool_down()
-        print("You cooled down your Meka!")
+    game = Game(player, enemy)
+    game.run()
 
-    elif choice == "3":
-        print("\nChoose ammo type to reload:")
-        print("1. Standard")
-        print("2. Armor Piercing")
-        print("3. Shield Breaker")
-        ammo_choice = input(">> ")
-        ammo_map = {
-            "1": "standard",
-            "2": "armor_piercing",
-            "3": "shield_breaker",
-        }
-        ammo_type = ammo_map.get(ammo_choice)
-
-        if ammo_type:
-            player.recharge_ammo(ammo_type)
-            print(f"You reloaded {ammo_type.replace('_', ' ')} ammo!")
-        else:
-            print("Invalid ammo type.")
-
-    elif choice == "4":
-        player.recharge_shield(player.power)
-        print("You redirected power to recharge your shields")
-
-    time.sleep(2)
-
-    if enemy.is_alive():
-        available_ammo = enemy.available_ammo_types()
-        if available_ammo and not enemy.overheat():
-            ammo_type = random.choice(available_ammo)
-            damage = enemy.attack + random.randint(-2, 5)
-            if ammo_type == "standard" and random.random() < STANDARD_CRIT_CHANCE:
-                damage *= 3
-                print("The enemy hit a vulnerable point!")
-            player.take_damage(damage, ammo_type)
-            enemy.consume_ammo(ammo_type)
-            print(f"The enemy fired {ammo_type.replace('_', ' ')} ammo for {damage} damage!")
-        else:
-            print("The enemy cannot attack! Either they are out of ammo or they have overheated.")
-            enemy.cool_down()
-            enemy.recharge_ammo("standard")
-
-    time.sleep(2)
-
-clear_screen()
-if player.is_alive():
-    print("Congratulations! You have defeated the enemy Meka!")
-    input("\nPress Enter to exit...")
-else:
-    print("Game Over! The enemy Meka has defeated you!")
-    input("\nPress Enter to exit...")
+if __name__ == "__main__":
+    main()
