@@ -125,12 +125,12 @@ player = Meka("Player Meka", 100, 0, 50, 50, {
     "standard": 5,
     "armor_piercing": 2,
     "shield_breaker": 3,
-}, 5)
+}, 10)
 enemy = Meka("Enemy Meka", 100, 0, 50, 50, {
     "standard": 5,
     "armor_piercing": 2,
     "shield_breaker": 3,
-}, 5)
+}, 10)
 
 print("========================")
 print("      メカ戦闘")
