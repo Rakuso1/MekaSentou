@@ -47,7 +47,7 @@ class Meka:
     def is_alive(self):
         return self.power > 0
     
-    def take_damage(self, damage, ammo_type="standard"):
+    def take_damage(self, damage, ammo_type):
         shield_multiplier = 2 if ammo_type == "shield_breaker" else 1
         armor_multiplier = 2 if ammo_type == "armor_piercing" else 1
 
@@ -188,15 +188,54 @@ class Game:
             print("Invalid action. Turn skipped.")
 
     def enemy_turn(self):
-        available_ammo = self.enemy.available_ammo_types()
-        if available_ammo and not self.enemy.check_overheat():
-            ammo_type = random.choice(available_ammo)
+        if self.enemy.check_overheat():
+            self.enemy.cool_down()
+            self.enemy_recharge_ammo()
+            print("Enemy MEKA is cooling down and reloading!")
+            return
+        ammo_type = self.enemy_pick_ammo()
+
+        if ammo_type:
             self.do_attack(self.enemy, self.player, ammo_type)
             self.enemy.apply_heat()
         else:
-            print("The enemy cannot attack! Either they are out of ammo or they have overheated.")
-            self.enemy.cool_down()
-            self.enemy.recharge_ammo("standard")
+            self.enemy_recharge_ammo()
+
+    def enemy_pick_ammo(self):
+        player = self.player
+        enemy = self.enemy
+
+        if player.shield > 10 and enemy.has_ammo("shield_breaker"): # Prioritize shield breaker if player's shield is strong
+            return "shield_breaker"
+        
+        if player.armor > 10 and enemy.has_ammo("armor_piercing"): # Prioritize armor piercing if player's armor is strong
+            return "armor_piercing"
+        
+        if enemy.has_ammo("standard"):
+            return "standard"
+        
+        available = enemy.available_ammo_types()
+        if available:
+            return random.choice(available)
+        
+        return None
+    
+    def enemy_recharge_ammo(self):
+        player = self.player
+        enemy = self.enemy
+
+        if player.shield > 10 and enemy.ammo.get("shield_breaker", 0) == 0:
+            enemy.recharge_ammo("shield_breaker")
+            print ("Enemy MEKA reloaded shield breaker ammo!")
+            return
+        
+        if player.armor > 10 and enemy.ammo.get("armor_piercing", 0) == 0:
+            enemy.recharge_ammo("armor_piercing")
+            print ("Enemy MEKA reloaded armor piercing ammo!")
+            return
+        
+        enemy.recharge_ammo("standard")
+        print ("Enemy MEKA reloaded standard ammo!")
 
     def generate_enemy(self, wave):
         names = ["Cadet", "Ranger", "Officer", "Marshal"]
