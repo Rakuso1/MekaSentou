@@ -3,7 +3,7 @@ import time
 import os
 import math
 
-STANDARD_CRIT_CHANCE = 0.20 # 20% chance for standard ammo to critically hit
+STANDARD_CRIT_CHANCE = 0.25 # 25% chance for standard ammo to critically hit
 
 AMMO_TYPES = {
     "1": "standard",
@@ -20,13 +20,51 @@ class Meka:
         self.power = power
         self.max_power = power
         self.heat = heat
-        self.max_heat = 100
         self.armor = armor
         self.max_armor = armor
         self.shield = shield
         self.max_shield = shield
         self.ammo = ammo
         self.attack = attack
+        self.exp = 0
+        self.level = 1
+
+    def level_up(self):
+        self.level += 1
+        self.display_status()
+        print(f"\nLevel Up! You are now level {self.level}. Choose your upgrade:")
+        print("1. Increase Max Power (+20)")
+        print("2. Increase Armor (+10)")
+        print("3. Increase Shield (+10)")
+        print("4. Increase Attack (+5)")
+        choice = input(">> ")
+
+        if choice == "1":
+            self.max_power += 20
+            self.power += 20 # Also heal current power by 20 when max power increases
+            print("Max Power increased by 20!")
+
+        elif choice == "2":
+            self.max_armor += 10
+            self.armor += 10 # Also heal current armor by 10 when max armor increases
+            print("Armor increased by 10!")
+
+        elif choice == "3":
+            self.max_shield += 10
+            self.shield += 10 # Also heal current shield by 10 when max shield increases
+            print("Shield increased by 10!")
+
+        elif choice == "4":
+            self.attack += 5
+            print("Attack increased by 5!")
+
+        else:
+            self.attack += 5
+            print("Attack increased by 5 by default!")
+
+        heal = math.ceil(self.max_power * 0.5) # Heal 50% of max power after each victory
+        self.power = min(self.max_power, self.power + heal)
+        print(f"Emergency repairs complete! Power restored by {heal} points.")
 
     def ammo_total(self):
         return sum(self.ammo.values())
@@ -38,7 +76,7 @@ class Meka:
         if self.has_ammo(ammo_type):
             self.ammo[ammo_type] -= 1
 
-    def recharge_ammo(self, ammo_type):
+    def reload_ammo(self, ammo_type):
         if ammo_type == "standard":
             self.ammo[ammo_type] = min(self.ammo.get(ammo_type, 0) + 10, 10)
         else:
@@ -86,7 +124,7 @@ class Meka:
     def recharge_shield(self):
         cost = math.ceil(self.power * 0.2) # Cost is 20% of current power, rounded up
         missing_shield = self.max_shield - self.shield
-        gain = math.ceil(missing_shield * 0.5) # Gain is 50% of missing shield, rounded up
+        gain = math.ceil(missing_shield * 0.8) # Gain is 80% of missing shield, rounded up
         self.power = max(0, self.power - cost) 
         self.shield = min(self.shield + gain, self.max_shield) 
 
@@ -100,7 +138,7 @@ class Meka:
     def display_status(self):
         print(f"\n{self.name}")
         print(f"Power:  [{self.make_bar(self.power, self.max_power)}] {self.power}/{self.max_power}")
-        print(f"Heat:   [{self.make_bar(self.heat, self.max_heat)}] {self.heat}/{self.max_heat}")
+        print(f"Heat:   [{self.make_bar(self.heat, 100)}] {self.heat}/100")
         print(f"Armor:  [{self.make_bar(self.armor, self.max_armor)}] {self.armor}/{self.max_armor}")
         print(f"Shield: [{self.make_bar(self.shield, self.max_shield)}] {self.shield}/{self.max_shield}")
         print(f"Ammo:   {self.ammo_total()}")
@@ -126,9 +164,8 @@ class Game:
             if self.player.is_alive():
                 print(f"You have defeated {self.enemy.name}!")
                 wave += 1
-                heal = math.ceil(self.player.max_power * 0.5) # Heal 50% of max power after each victory
-                self.player.power = min(self.player.max_power, self.player.power + heal)
-                print(f"Emergency repairs complete! Power restored by {heal} points.")
+                clear_screen()
+                self.player.level_up()
                 time.sleep(3)
                 clear_screen()
         self.end_game()
@@ -156,7 +193,7 @@ class Game:
         print("\nChoose your action:")
         print("1. Attack")
         print("2. Cool Down")
-        print("3. Recharge Ammo")
+        print("3. Reload Ammo")
         print("4. Recharge Shields")
         choice = input(">> ")
 
@@ -178,7 +215,7 @@ class Game:
         elif choice == "3":
             ammo_type = self.pick_ammo()
             if ammo_type:
-                self.player.recharge_ammo(ammo_type)
+                self.player.reload_ammo(ammo_type)
                 print(f"You reloaded {ammo_type.replace('_', ' ')} ammo!")
             else:
                 print("Invalid ammo type.")
@@ -193,7 +230,7 @@ class Game:
     def enemy_turn(self):
         if self.enemy.check_overheat():
             self.enemy.cool_down()
-            self.enemy_recharge_ammo()
+            self.enemy_reload_ammo()
             print("Enemy MEKA is cooling down and reloading!")
             return
         ammo_type = self.enemy_pick_ammo()
@@ -202,7 +239,7 @@ class Game:
             self.do_attack(self.enemy, self.player, ammo_type)
             self.enemy.apply_heat()
         else:
-            self.enemy_recharge_ammo()
+            self.enemy_reload_ammo()
 
     def enemy_pick_ammo(self):
         player = self.player
@@ -223,21 +260,21 @@ class Game:
         
         return None
     
-    def enemy_recharge_ammo(self):
+    def enemy_reload_ammo(self):
         player = self.player
         enemy = self.enemy
 
         if player.shield > 10 and enemy.ammo.get("shield_breaker", 0) == 0:
-            enemy.recharge_ammo("shield_breaker")
+            enemy.reload_ammo("shield_breaker")
             print ("Enemy MEKA reloaded shield breaker ammo!")
             return
         
         if player.armor > 10 and enemy.ammo.get("armor_piercing", 0) == 0:
-            enemy.recharge_ammo("armor_piercing")
+            enemy.reload_ammo("armor_piercing")
             print ("Enemy MEKA reloaded armor piercing ammo!")
             return
         
-        enemy.recharge_ammo("standard")
+        enemy.reload_ammo("standard")
         print ("Enemy MEKA reloaded standard ammo!")
 
     def generate_enemy(self, wave):
@@ -265,7 +302,7 @@ class Game:
     def do_attack(self, attacker, defender, ammo_type):
         damage = attacker.attack + random.randint(-2, 2)
         if ammo_type == "standard" and random.random() < STANDARD_CRIT_CHANCE:
-            damage *= 3
+            damage *= 4 # Standard ammo has a chance to critically hit for 4x damage
             if attacker is self.player:
                 print("You hit a vulnerable point!")
             else:
