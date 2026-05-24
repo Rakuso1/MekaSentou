@@ -112,9 +112,9 @@ class Meka:
         return [ammo_type for ammo_type, count in self.ammo.items() if count > 0]
 
 class Game:
-    def __init__(self, player, enemy):
+    def __init__(self, player):
         self.player = player
-        self.enemy = enemy
+        self.enemy = None
 
     def run(self):
         wave = 1
@@ -220,7 +220,6 @@ class Game:
 
         return Meka(f"{name}", power, 0, armor, shield, ammo, attack)
 
-
     def do_attack(self, attacker, defender, ammo_type):
         damage = attacker.attack + random.randint(-2, 5)
         if ammo_type == "standard" and random.random() < STANDARD_CRIT_CHANCE:
@@ -255,13 +254,8 @@ def main():
         "armor_piercing": 2,
         "shield_breaker": 3,
     }, 5)
-    enemy = Meka("Enemy Meka", 100, 0, 50, 50, {
-        "standard": 5,
-        "armor_piercing": 2,
-        "shield_breaker": 3,
-    }, 5)
 
-    game = Game(player, enemy)
+    game = Game(player)
     game.run()
 
 if __name__ == "__main__":
