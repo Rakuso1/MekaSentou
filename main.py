@@ -117,6 +117,20 @@ class Game:
         self.enemy = enemy
 
     def run(self):
+        wave = 1
+        while self.player.is_alive():
+            self.enemy = self.generate_enemy(wave)
+            print(f"\n{self.enemy.name} approaches! Prepare for battle!")
+            time.sleep(2)
+            self.battle_loop()
+            if self.player.is_alive():
+                print(f"You have defeated {self.enemy.name}!")
+                wave += 1
+                time.sleep(2)
+                clear_screen()
+        self.end_game()
+
+    def battle_loop(self):
         while self.player.is_alive() and self.enemy.is_alive():
             clear_screen()
             self.player.display_status()
@@ -125,8 +139,7 @@ class Game:
             time.sleep(2)
             if self.enemy.is_alive():
                 self.enemy_turn()
-                time.sleep(2)
-        self.end_game()
+            time.sleep(2)
 
     def end_game(self):
         clear_screen()
@@ -184,6 +197,29 @@ class Game:
             print("The enemy cannot attack! Either they are out of ammo or they have overheated.")
             self.enemy.cool_down()
             self.enemy.recharge_ammo("standard")
+
+    def generate_enemy(self, wave):
+        names = ["Cadet", "Ranger", "Officer", "Marshal"]
+        name = names[min(wave - 1, len(names) - 1)] # caps name at "Marshal" for higher waves
+
+        power = 80 + (wave * 10) # Base 80, +10 per wave
+        armor = 20 + (wave * 5) # Base 20, +5 per wave
+        shield = 10 + (wave * 5) # Base 10, +5 per wave
+        attack = 4 + (wave * 1 ) # Base 4, +1 per wave
+
+        power = min(power, 300) # Cap power at 300
+        armor = min(armor, 150) # Cap armor at 150
+        shield = min(shield, 150) # Cap shield at 150
+        attack = min(attack, 20) # Cap attack at 20
+
+        ammo = {
+            "standard": min(5 + wave, 15), # Base 5, +1 per wave, cap at 15
+            "armor_piercing": min(2 + wave, 10), # Base 2, +1 per wave, cap at 10
+            "shield_breaker": min(3 + wave, 10), # Base 3, +1 per wave, cap at 10
+        }
+
+        return Meka(f"{name}", power, 0, armor, shield, ammo, attack)
+
 
     def do_attack(self, attacker, defender, ammo_type):
         damage = attacker.attack + random.randint(-2, 5)
