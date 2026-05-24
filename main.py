@@ -326,9 +326,14 @@ def main():
     print("========================")
     print("      メカ戦闘")
     print("========================")
+
+    pilot_name = input("Enter your name, Pilot: ").strip()
+    if not pilot_name:
+        pilot_name = "Unknown Pilot"
+
     input("\nPress Enter to battle...")
     
-    player = Meka("Player Meka", 100, 0, 50, 50, {
+    player = Meka(pilot_name, 100, 0, 50, 50, {
         "standard": 10,
         "armor_piercing": 10,
         "shield_breaker": 10,
