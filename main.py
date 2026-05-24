@@ -3,7 +3,7 @@ import time
 import os
 import math
 
-STANDARD_CRIT_CHANCE = 0.10 # 10% chance for standard ammo to critically hit
+STANDARD_CRIT_CHANCE = 0.20 # 20% chance for standard ammo to critically hit
 
 AMMO_TYPES = {
     "1": "standard",
@@ -126,7 +126,10 @@ class Game:
             if self.player.is_alive():
                 print(f"You have defeated {self.enemy.name}!")
                 wave += 1
-                time.sleep(2)
+                heal = math.ceil(self.player.max_power * 0.5) # Heal 50% of max power after each victory
+                self.player.power = min(self.player.max_power, self.player.power + heal)
+                print(f"Emergency repairs complete! Power restored by {heal} points.")
+                time.sleep(3)
                 clear_screen()
         self.end_game()
 
@@ -260,7 +263,7 @@ class Game:
         return Meka(f"{name}", power, 0, armor, shield, ammo, attack)
 
     def do_attack(self, attacker, defender, ammo_type):
-        damage = attacker.attack + random.randint(-2, 5)
+        damage = attacker.attack + random.randint(-2, 2)
         if ammo_type == "standard" and random.random() < STANDARD_CRIT_CHANCE:
             damage *= 3
             if attacker is self.player:
@@ -292,7 +295,7 @@ def main():
         "standard": 10,
         "armor_piercing": 10,
         "shield_breaker": 10,
-    }, 5)
+    }, 10)
 
     game = Game(player)
     game.run()
