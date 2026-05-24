@@ -42,7 +42,7 @@ class Meka:
         if ammo_type == "standard":
             self.ammo[ammo_type] = min(self.ammo.get(ammo_type, 0) + 10, 10)
         else:
-            self.ammo[ammo_type] = min(self.ammo.get(ammo_type, 0) + 2, 10)
+            self.ammo[ammo_type] = min(self.ammo.get(ammo_type, 0) + 5, 10)
     
     def is_alive(self):
         return self.power > 0
@@ -81,7 +81,7 @@ class Meka:
             self.heat = 100
     
     def cool_down(self):
-        self.heat = max(0, self.heat - 50) # Cool down reduces heat by 50
+        self.heat = 0 
 
     def recharge_shield(self):
         cost = math.ceil(self.power * 0.2) # Cost is 20% of current power, rounded up
@@ -250,9 +250,9 @@ def main():
     input("\nPress Enter to battle...")
     
     player = Meka("Player Meka", 100, 0, 50, 50, {
-        "standard": 5,
-        "armor_piercing": 2,
-        "shield_breaker": 3,
+        "standard": 10,
+        "armor_piercing": 10,
+        "shield_breaker": 10,
     }, 5)
 
     game = Game(player)
