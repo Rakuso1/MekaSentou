@@ -2,6 +2,8 @@ import random
 import time
 import os
 import math
+import json
+from datetime import date 
 
 STANDARD_CRIT_CHANCE = 0.25 # 25% chance for standard ammo to critically hit
 
@@ -11,12 +13,14 @@ AMMO_TYPES = {
     "3": "shield_breaker",
 }
 
+LEADERBOARD_FILE = "leaderboard.json"
+
 def clear_screen():
     os.system('cls' if os.name == 'nt' else 'clear')
 
 class Meka:
     def __init__(self, name, power, heat, armor, shield, ammo, attack):
-        self.name = name
+        self.pilot_name = name
         self.power = power
         self.max_power = power
         self.heat = heat
@@ -136,7 +140,7 @@ class Meka:
         return "█" * filled + "-" * empty
 
     def display_status(self):
-        print(f"\n{self.name}")
+        print(f"\n{self.pilot_name}")
         print(f"Power:  [{self.make_bar(self.power, self.max_power)}] {self.power}/{self.max_power}")
         print(f"Heat:   [{self.make_bar(self.heat, 100)}] {self.heat}/100")
         print(f"Armor:  [{self.make_bar(self.armor, self.max_armor)}] {self.armor}/{self.max_armor}")
@@ -153,17 +157,16 @@ class Game:
     def __init__(self, player):
         self.player = player
         self.enemy = None
+        self.wave = 1
 
     def run(self):
-        wave = 1
         while self.player.is_alive():
-            self.enemy = self.generate_enemy(wave)
-            print(f"\n{self.enemy.name} approaches! Prepare for battle!")
+            self.enemy = self.generate_enemy(self.wave)
+            print(f"\n{self.enemy.pilot_name} approaches! Prepare for battle!")
             time.sleep(2)
             self.battle_loop()
             if self.player.is_alive():
-                print(f"You have defeated {self.enemy.name}!")
-                wave += 1
+                self.wave += 1
                 clear_screen()
                 self.player.level_up()
                 time.sleep(3)
@@ -179,15 +182,48 @@ class Game:
             time.sleep(2)
             if self.enemy.is_alive():
                 self.enemy_turn()
+            else:
+                print(f"You have defeated {self.enemy.pilot_name}!")
             time.sleep(2)
 
     def end_game(self):
         clear_screen()
-        if self.player.is_alive():
-            print("Congratulations! You have defeated the enemy Meka!")
-        else:
-            print("Game Over! The enemy Meka has defeated you!")
+        print(f"Game Over! You Survived {self.wave} waves.")
+        print("\nFinal Stats")
+        self.player.display_status()
+        self.save_score()
+        self.show_leaderboard()
         input("\nPress Enter to exit...")
+
+    def save_score(self):
+        scores = self.load_scores()
+        scores.append({
+            "name": self.player.pilot_name,
+            "waves": self.wave,
+            "date": str(date.today())
+        })
+        scores.sort(key=lambda x: x["waves"], reverse=True)
+        scores = scores[:10] # Keep only top 10 scores
+        with open(LEADERBOARD_FILE, "w") as f:
+            json.dump(scores, f, indent=2)
+
+    def load_scores(self):
+        if not os.path.exists(LEADERBOARD_FILE):
+            return []
+        with open(LEADERBOARD_FILE, "r") as f:
+            return json.load(f)
+        
+    def show_leaderboard(self):
+        scores = self.load_scores()
+        print("\n========================")
+        print("      LEADERBOARD")
+        print("========================")
+        if not scores:
+            print("No scores yet. Be the first to set a record!")
+            return
+        for i, entry in enumerate(scores, 1):
+            arrow = "->" if entry["name"] == self.player.pilot_name and entry["waves"] == self.wave else "  "
+            print(f"{arrow} {i}. {entry['name']:<20} {entry['waves']} waves       {entry['date']}")
 
     def player_turn(self):
         print("\nChoose your action:")
@@ -326,9 +362,14 @@ def main():
     print("========================")
     print("      メカ戦闘")
     print("========================")
+
+    pilot_name = input("Enter your name, Pilot: ").strip()
+    if not pilot_name:
+        pilot_name = "Unknown Pilot"
+
     input("\nPress Enter to battle...")
     
-    player = Meka("Player Meka", 100, 0, 50, 50, {
+    player = Meka(pilot_name, 100, 0, 50, 50, {
         "standard": 10,
         "armor_piercing": 10,
         "shield_breaker": 10,
