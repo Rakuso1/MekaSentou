@@ -3,6 +3,9 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+# Custom
+leaderboard.json
+
 # C extensions
 *.so
 
