@@ -178,13 +178,90 @@ class Game:
             clear_screen()
             self.player.display_status()
             self.enemy.display_status()
-            self.player_turn()
+            player_action = self.player_choose()
+            enemy_action = self.enemy_choose()
+            print("\nResolving actions...")
+            time.sleep(1)
+            self.resolve(player_action, enemy_action)
             time.sleep(2)
-            if self.enemy.is_alive():
-                self.enemy_turn()
+
+    def player_choose(self):
+        print("\nChoose your action:")
+        print("1. Attack")
+        print("2. Cool Down")
+        print("3. Reload Ammo")
+        print("4. Recharge Shields")
+        choice = input(">> ")
+
+        if choice == "1":
+            ammo_type = self.pick_ammo()
+            if ammo_type and self.player.has_ammo(ammo_type):
+                return {"type": "attack", "ammo": ammo_type}
             else:
-                print(f"You have defeated {self.enemy.pilot_name}!")
-            time.sleep(2)
+                print("Invalid action - defaulting to cool down.")
+                return {"type": "cool_down"}
+
+        elif choice == "2":
+            return {"type": "cool_down"}
+
+        elif choice == "3":
+            ammo_type = self.pick_ammo()
+            return {"type": "reload", "ammo": ammo_type or "standard"}
+        
+        elif choice == "4":
+            return {"type": "recharge_shield"}
+
+        else:
+            print("Invalid action - defaulting to cool down.")
+            return {"type": "cool_down"}
+        
+    def enemy_choose(self):
+        if self.enemy.check_overheat():
+            return {"type": "cool_down"}
+        
+        ammo_type = self.enemy_pick_ammo()
+        if ammo_type:
+            return {"type": "attack", "ammo": ammo_type}
+        else:
+            ammo_reload = self.enemy_reload_ammo()
+            return {"type": "reload", "ammo": ammo_reload or "standard"}
+    
+    def resolve(self, player_action, enemy_action):
+        player_damage =  self.calculate_damage(self.player, player_action)
+        enemy_damage = self.calculate_damage(self.enemy, enemy_action)
+
+        self.apply_action(self.player, self.enemy, player_action, player_damage)
+        self.apply_action(self.enemy, self.player, enemy_action, enemy_damage)
+
+    def calculate_damage(self, attacker, action):
+        if action["type"] != "attack":
+            return 0
+        damage = attacker.attack + random.randint(-2, 2)
+        if action["ammo"] == "standard" and random.random() < STANDARD_CRIT_CHANCE:
+            damage *= 4
+        return damage
+    
+    def apply_action(self, attacker, defender, action, damage):
+        if action["type"] == "attack":
+            if attacker.check_overheat():
+                print(f"{attacker.pilot_name} Meka OVERHEATED and couldn't fire!")
+                return
+            defender.take_damage(damage, action["ammo"])
+            attacker.consume_ammo(action["ammo"])
+            attacker.apply_heat()
+            print(f"{attacker.pilot_name} fired {action['ammo'].replace('_', ' ')} ammo for {damage} damage!")
+
+        elif action["type"] == "cool_down":
+            attacker.cool_down()
+            print(f"{attacker.pilot_name} Meka is cooling down!")
+
+        elif action["type"] == "reload":
+            attacker.reload_ammo(action["ammo"])
+            print(f"{attacker.pilot_name} Meka reloaded {action['ammo'].replace('_', ' ')} ammo!")
+
+        elif action["type"] == "recharge_shield":
+            attacker.recharge_shield()
+            print(f"{attacker.pilot_name} Meka recharged its shields!")
 
     def end_game(self):
         clear_screen()
@@ -225,66 +302,14 @@ class Game:
             arrow = "->" if entry["name"] == self.player.pilot_name and entry["waves"] == self.wave else "  "
             print(f"{arrow} {i}. {entry['name']:<20} {entry['waves']} waves       {entry['date']}")
 
-    def player_turn(self):
-        print("\nChoose your action:")
-        print("1. Attack")
-        print("2. Cool Down")
-        print("3. Reload Ammo")
-        print("4. Recharge Shields")
-        choice = input(">> ")
-
-        if choice == "1":
-            ammo_type = self.pick_ammo()
-            if ammo_type and self.player.has_ammo(ammo_type):
-                if not self.player.check_overheat():
-                    self.do_attack(self.player, self.enemy, ammo_type)
-                    self.player.apply_heat()
-                else:
-                    print("MEKA OVERHEATED!")
-            else:
-                print("OUT OF AMMO.")
-
-        elif choice == "2":
-            self.player.cool_down()
-            print("MEKA COOLED DOWN!")
-
-        elif choice == "3":
-            ammo_type = self.pick_ammo()
-            if ammo_type:
-                self.player.reload_ammo(ammo_type)
-                print(f"You reloaded {ammo_type.replace('_', ' ')} ammo!")
-            else:
-                print("Invalid ammo type.")
-
-        elif choice == "4":
-            self.player.recharge_shield()
-            print("POWER REDISTRIBUTED TO SHIELDS!")
-
-        else:
-            print("Invalid action. Turn skipped.")
-
-    def enemy_turn(self):
-        if self.enemy.check_overheat():
-            self.enemy.cool_down()
-            self.enemy_reload_ammo()
-            print("Enemy MEKA is cooling down and reloading!")
-            return
-        ammo_type = self.enemy_pick_ammo()
-
-        if ammo_type:
-            self.do_attack(self.enemy, self.player, ammo_type)
-            self.enemy.apply_heat()
-        else:
-            self.enemy_reload_ammo()
-
     def enemy_pick_ammo(self):
         player = self.player
         enemy = self.enemy
 
-        if player.shield > 10 and enemy.has_ammo("shield_breaker"): # Prioritize shield breaker if player's shield is strong
+        if player.shield >= 1 and enemy.has_ammo("shield_breaker"): # Prioritize shield breaker if player's shield is strong
             return "shield_breaker"
         
-        if player.armor > 10 and enemy.has_ammo("armor_piercing"): # Prioritize armor piercing if player's armor is strong
+        if player.armor >= 1 and enemy.has_ammo("armor_piercing"): # Prioritize armor piercing if player's armor is strong
             return "armor_piercing"
         
         if enemy.has_ammo("standard"):
@@ -301,18 +326,11 @@ class Game:
         enemy = self.enemy
 
         if player.shield > 10 and enemy.ammo.get("shield_breaker", 0) == 0:
-            enemy.reload_ammo("shield_breaker")
-            print ("Enemy MEKA reloaded shield breaker ammo!")
-            return
+            return "shield_breaker"
         
         if player.armor > 10 and enemy.ammo.get("armor_piercing", 0) == 0:
-            enemy.reload_ammo("armor_piercing")
-            print ("Enemy MEKA reloaded armor piercing ammo!")
-            return
-        
-        enemy.reload_ammo("standard")
-        print ("Enemy MEKA reloaded standard ammo!")
-
+            return "armor_piercing"
+    
     def generate_enemy(self, wave):
         names = ["Cadet", "Ranger", "Officer", "Marshal"]
         name = names[min(wave - 1, len(names) - 1)] # caps name at "Marshal" for higher waves
@@ -334,21 +352,6 @@ class Game:
         }
 
         return Meka(f"{name}", power, 0, armor, shield, ammo, attack)
-
-    def do_attack(self, attacker, defender, ammo_type):
-        damage = attacker.attack + random.randint(-2, 2)
-        if ammo_type == "standard" and random.random() < STANDARD_CRIT_CHANCE:
-            damage *= 4 # Standard ammo has a chance to critically hit for 4x damage
-            if attacker is self.player:
-                print("You hit a vulnerable point!")
-            else:
-                print("The enemy hit a vulnerable point!")
-        defender.take_damage(damage, ammo_type)
-        attacker.consume_ammo(ammo_type)
-        if attacker is self.player:
-            print(f"You fired {ammo_type.replace('_', ' ')} ammo for {damage} damage!")
-        else:
-            print(f"The enemy fired {ammo_type.replace('_', ' ')} ammo for {damage} damage!")
 
     def pick_ammo(self):
         print("\nChoose ammo type:")
