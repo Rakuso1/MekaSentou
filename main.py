@@ -18,6 +18,28 @@ LEADERBOARD_FILE = "leaderboard.json"
 def clear_screen():
     os.system('cls' if os.name == 'nt' else 'clear')
 
+class MekaDisplay:
+    @staticmethod
+    def make_bar(value: int, max_value: int) -> str:
+        bar_length = 10
+        filled = int((value / max_value) * bar_length) if max_value else 0
+        filled = max(0, min(bar_length, filled))
+        empty = bar_length - filled
+        return "█" * filled + "-" * empty
+    
+    @staticmethod
+    def render_status(meka: "Meka") -> None:
+        print(f"\n{meka.pilot_name}")
+        print(f"Power:  [{MekaDisplay.make_bar(meka.power, meka.max_power)}] {meka.power}/{meka.max_power}")
+        print(f"Heat:   [{MekaDisplay.make_bar(meka.heat, 100)}] {meka.heat}/100")
+        print(f"Armor:  [{MekaDisplay.make_bar(meka.armor, meka.max_armor)}] {meka.armor}/{meka.max_armor}")
+        print(f"Shield: [{MekaDisplay.make_bar(meka.shield, meka.max_shield)}] {meka.shield}/{meka.max_shield}")
+        print(f"Ammo:   {meka.ammo_total()}")
+        print(f"  Standard:        [{MekaDisplay.make_bar(meka.ammo.get('standard', 0), 10)}] {meka.ammo.get('standard', 0)}/10")
+        print(f"  Armor Piercing:   [{MekaDisplay.make_bar(meka.ammo.get('armor_piercing', 0), 10)}] {meka.ammo.get('armor_piercing', 0)}/10")
+        print(f"  Shield Breaker:   [{MekaDisplay.make_bar(meka.ammo.get('shield_breaker', 0), 10)}] {meka.ammo.get('shield_breaker', 0)}/10")
+
+
 class Meka:
     def __init__(self, name, power, heat, armor, shield, ammo, attack):
         self.pilot_name = name
@@ -35,7 +57,7 @@ class Meka:
 
     def level_up(self):
         self.level += 1
-        self.display_status()
+        MekaDisplay.render_status(self)
         print(f"\nLevel Up! You are now level {self.level}. Choose your upgrade:")
         print("1. Increase Max Power (+20)")
         print("2. Increase Armor (+10)")
@@ -132,24 +154,6 @@ class Meka:
         self.power = max(0, self.power - cost) 
         self.shield = min(self.shield + gain, self.max_shield) 
 
-    def make_bar(self, value, max_value):
-        bar_length = 10
-        filled = int((value / max_value) * bar_length) if max_value else 0
-        filled = max(0, min(bar_length, filled))
-        empty = bar_length - filled
-        return "█" * filled + "-" * empty
-
-    def display_status(self):
-        print(f"\n{self.pilot_name}")
-        print(f"Power:  [{self.make_bar(self.power, self.max_power)}] {self.power}/{self.max_power}")
-        print(f"Heat:   [{self.make_bar(self.heat, 100)}] {self.heat}/100")
-        print(f"Armor:  [{self.make_bar(self.armor, self.max_armor)}] {self.armor}/{self.max_armor}")
-        print(f"Shield: [{self.make_bar(self.shield, self.max_shield)}] {self.shield}/{self.max_shield}")
-        print(f"Ammo:   {self.ammo_total()}")
-        print(f"  Standard:        [{self.make_bar(self.ammo.get('standard', 0), 10)}] {self.ammo.get('standard', 0)}/10")
-        print(f"  Armor Piercing:   [{self.make_bar(self.ammo.get('armor_piercing', 0), 10)}] {self.ammo.get('armor_piercing', 0)}/10")
-        print(f"  Shield Breaker:   [{self.make_bar(self.ammo.get('shield_breaker', 0), 10)}] {self.ammo.get('shield_breaker', 0)}/10")
-
     def available_ammo_types(self):
         return [ammo_type for ammo_type, count in self.ammo.items() if count > 0]
 
@@ -176,8 +180,8 @@ class Game:
     def battle_loop(self):
         while self.player.is_alive() and self.enemy.is_alive():
             clear_screen()
-            self.player.display_status()
-            self.enemy.display_status()
+            MekaDisplay.render_status(self.player)
+            MekaDisplay.render_status(self.enemy)
             player_action = self.player_choose()
             enemy_action = self.enemy_choose()
             print("\nResolving actions...")
@@ -267,7 +271,7 @@ class Game:
         clear_screen()
         print(f"Game Over! You Survived {self.wave} waves.")
         print("\nFinal Stats")
-        self.player.display_status()
+        MekaDisplay.render_status(self.player)
         self.save_score()
         self.show_leaderboard()
         input("\nPress Enter to exit...")
