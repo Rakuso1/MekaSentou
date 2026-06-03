@@ -1,4 +1,5 @@
 from __future__ import annotations
+from enum import Enum
 import random
 import time
 import os
@@ -8,13 +9,25 @@ from datetime import date
 
 STANDARD_CRIT_CHANCE = 0.25 # 25% chance for standard ammo to critically hit
 
-AMMO_TYPES = {
-    "1": "standard",
-    "2": "armor_piercing",
-    "3": "shield_breaker",
-}
 
 LEADERBOARD_FILE = "leaderboard.json"
+
+class AmmoType(Enum):
+    STANDARD = "standard"
+    ARMOR_PIERCING = "armor_piercing"
+    SHIELD_BREAKER = "shield_breaker"
+
+AMMO_TYPES: dict[str, AmmoType] = {
+    "1": AmmoType.STANDARD,
+    "2": AmmoType.ARMOR_PIERCING,
+    "3": AmmoType.SHIELD_BREAKER,
+}
+
+class ActionType(Enum):
+    ATTACK = "attack"
+    COOL_DOWN = "cool_down"
+    RELOAD = "reload"
+    RECHARGE_SHIELD = "recharge_shield"
 
 def clear_screen() -> None:
     os.system('cls' if os.name == 'nt' else 'clear')
@@ -36,9 +49,9 @@ class MekaDisplay:
         print(f"Armor:  [{MekaDisplay.make_bar(meka.armor, meka.max_armor)}] {meka.armor}/{meka.max_armor}")
         print(f"Shield: [{MekaDisplay.make_bar(meka.shield, meka.max_shield)}] {meka.shield}/{meka.max_shield}")
         print(f"Ammo:   {meka.ammo_total()}")
-        print(f"  Standard:        [{MekaDisplay.make_bar(meka.ammo.get('standard', 0), 10)}] {meka.ammo.get('standard', 0)}/10")
-        print(f"  Armor Piercing:   [{MekaDisplay.make_bar(meka.ammo.get('armor_piercing', 0), 10)}] {meka.ammo.get('armor_piercing', 0)}/10")
-        print(f"  Shield Breaker:   [{MekaDisplay.make_bar(meka.ammo.get('shield_breaker', 0), 10)}] {meka.ammo.get('shield_breaker', 0)}/10")
+        print(f"  Standard:        [{MekaDisplay.make_bar(meka.ammo.get(AmmoType.STANDARD, 0), 10)}] {meka.ammo.get(AmmoType.STANDARD, 0)}/10")
+        print(f"  Armor Piercing:   [{MekaDisplay.make_bar(meka.ammo.get(AmmoType.ARMOR_PIERCING, 0), 10)}] {meka.ammo.get(AmmoType.ARMOR_PIERCING, 0)}/10")
+        print(f"  Shield Breaker:   [{MekaDisplay.make_bar(meka.ammo.get(AmmoType.SHIELD_BREAKER, 0), 10)}] {meka.ammo.get(AmmoType.SHIELD_BREAKER, 0)}/10")
 
 
 class Meka:
@@ -49,7 +62,7 @@ class Meka:
         heat: int,
         armor: int,
         shield: int,
-        ammo: dict[str, int],
+        ammo: dict[AmmoType, int],
         attack: int
     ) -> None:
         self.pilot_name: str = name
@@ -60,7 +73,7 @@ class Meka:
         self.max_armor: int = armor
         self.shield: int = shield
         self.max_shield: int = shield
-        self.ammo: dict[str, int] = ammo
+        self.ammo: dict[AmmoType, int] = ammo
         self.attack: int = attack
         self.exp: int = 0
         self.level: int = 1
@@ -105,15 +118,15 @@ class Meka:
     def ammo_total(self) -> int:
         return sum(self.ammo.values())
 
-    def has_ammo(self, ammo_type: str) -> bool:
+    def has_ammo(self, ammo_type: AmmoType) -> bool:
         return self.ammo.get(ammo_type, 0) > 0
 
-    def consume_ammo(self, ammo_type: str) -> None:
+    def consume_ammo(self, ammo_type: AmmoType) -> None:
         if self.has_ammo(ammo_type):
             self.ammo[ammo_type] -= 1
 
-    def reload_ammo(self, ammo_type: str) -> None:
-        if ammo_type == "standard":
+    def reload_ammo(self, ammo_type: AmmoType) -> None:
+        if ammo_type == AmmoType.STANDARD:
             self.ammo[ammo_type] = min(self.ammo.get(ammo_type, 0) + 10, 10)
         else:
             self.ammo[ammo_type] = min(self.ammo.get(ammo_type, 0) + 5, 10)
@@ -121,9 +134,9 @@ class Meka:
     def is_alive(self) -> bool:
         return self.power > 0
     
-    def take_damage(self, damage: int, ammo_type: str) -> None:
-        shield_multiplier = 2 if ammo_type == "shield_breaker" else 1
-        armor_multiplier = 2 if ammo_type == "armor_piercing" else 1
+    def take_damage(self, damage: int, ammo_type: AmmoType) -> None:
+        shield_multiplier = 2 if ammo_type == AmmoType.SHIELD_BREAKER else 1
+        armor_multiplier = 2 if ammo_type == AmmoType.ARMOR_PIERCING else 1
 
         # Apply to shield layer first. If the shield is reduced to 0, leftover damage is lost.
         if damage > 0 and self.shield > 0:
@@ -164,7 +177,7 @@ class Meka:
         self.power = max(0, self.power - cost) 
         self.shield = min(self.shield + gain, self.max_shield) 
 
-    def available_ammo_types(self) -> list[str]:
+    def available_ammo_types(self) -> list[AmmoType]:
         return [ammo_type for ammo_type, count in self.ammo.items() if count > 0]
 
 class Game:
@@ -210,35 +223,35 @@ class Game:
         if choice == "1":
             ammo_type = self.pick_ammo()
             if ammo_type and self.player.has_ammo(ammo_type):
-                return {"type": "attack", "ammo": ammo_type}
+                return {"type": ActionType.ATTACK, "ammo": ammo_type}
             else:
                 print("Invalid action - defaulting to cool down.")
-                return {"type": "cool_down"}
+                return {"type": ActionType.COOL_DOWN}
 
         elif choice == "2":
-            return {"type": "cool_down"}
+            return {"type": ActionType.COOL_DOWN}
 
         elif choice == "3":
             ammo_type = self.pick_ammo()
-            return {"type": "reload", "ammo": ammo_type or "standard"}
+            return {"type": ActionType.RELOAD, "ammo": ammo_type or AmmoType.STANDARD}
         
         elif choice == "4":
-            return {"type": "recharge_shield"}
+            return {"type": ActionType.RECHARGE_SHIELD}
 
         else:
             print("Invalid action - defaulting to cool down.")
-            return {"type": "cool_down"}
+            return {"type": ActionType.COOL_DOWN}
         
     def enemy_choose(self) -> dict[str, str]:
         if self.enemy.check_overheat():
-            return {"type": "cool_down"}
+            return {"type": ActionType.COOL_DOWN}
         
         ammo_type = self.enemy_pick_ammo()
         if ammo_type:
-            return {"type": "attack", "ammo": ammo_type}
+            return {"type": ActionType.ATTACK, "ammo": ammo_type}
         else:
             ammo_reload = self.enemy_reload_ammo()
-            return {"type": "reload", "ammo": ammo_reload or "standard"}
+            return {"type": ActionType.RELOAD, "ammo": ammo_reload or AmmoType.STANDARD}
     
     def resolve(self, player_action: dict[str, str], enemy_action: dict[str, str]) -> None:
         player_damage =  self.calculate_damage(self.player, player_action)
@@ -247,33 +260,33 @@ class Game:
         self.apply_action(self.player, self.enemy, player_action, player_damage)
         self.apply_action(self.enemy, self.player, enemy_action, enemy_damage)
 
-    def calculate_damage(self, attacker: Meka, action: dict[str, str]) -> int:
-        if action["type"] != "attack":
+    def calculate_damage(self, attacker: Meka, action: dict[str, ActionType | AmmoType]) -> int:
+        if action["type"] != ActionType.ATTACK:
             return 0
         damage = attacker.attack + random.randint(-2, 2)
-        if action["ammo"] == "standard" and random.random() < STANDARD_CRIT_CHANCE:
+        if action["ammo"] == AmmoType.STANDARD and random.random() < STANDARD_CRIT_CHANCE:
             damage *= 4
         return damage
     
-    def apply_action(self, attacker: Meka, defender: Meka, action: dict[str, str], damage: int) -> None:
-        if action["type"] == "attack":
+    def apply_action(self, attacker: Meka, defender: Meka, action: dict[str, ActionType | AmmoType], damage: int) -> None:
+        if action["type"] == ActionType.ATTACK:
             if attacker.check_overheat():
                 print(f"{attacker.pilot_name} Meka OVERHEATED and couldn't fire!")
                 return
             defender.take_damage(damage, action["ammo"])
             attacker.consume_ammo(action["ammo"])
             attacker.apply_heat()
-            print(f"{attacker.pilot_name} fired {action['ammo'].replace('_', ' ')} ammo for {damage} damage!")
+            print(f"{attacker.pilot_name} fired {action['ammo'].value.replace('_', ' ')} ammo for {damage} damage!")
 
-        elif action["type"] == "cool_down":
+        elif action["type"] == ActionType.COOL_DOWN:
             attacker.cool_down()
             print(f"{attacker.pilot_name} Meka is cooling down!")
 
-        elif action["type"] == "reload":
+        elif action["type"] == ActionType.RELOAD:
             attacker.reload_ammo(action["ammo"])
-            print(f"{attacker.pilot_name} Meka reloaded {action['ammo'].replace('_', ' ')} ammo!")
+            print(f"{attacker.pilot_name} Meka reloaded {action['ammo'].value.replace('_', ' ')} ammo!")
 
-        elif action["type"] == "recharge_shield":
+        elif action["type"] == ActionType.RECHARGE_SHIELD:
             attacker.recharge_shield()
             print(f"{attacker.pilot_name} Meka recharged its shields!")
 
@@ -316,34 +329,32 @@ class Game:
             arrow = "->" if entry["name"] == self.player.pilot_name and entry["waves"] == self.wave else "  "
             print(f"{arrow} {i}. {entry['name']:<20} {entry['waves']} waves       {entry['date']}")
 
-    def enemy_pick_ammo(self) -> str | None:
+    def enemy_pick_ammo(self) -> AmmoType | None:
         player = self.player
         enemy = self.enemy
 
-        if player.shield >= 1 and enemy.has_ammo("shield_breaker"): # Prioritize shield breaker if player's shield is strong
-            return "shield_breaker"
+        if player.shield >= 1 and enemy.has_ammo(AmmoType.SHIELD_BREAKER): # Prioritize shield breaker if player's shield is strong
+            return AmmoType.SHIELD_BREAKER
         
-        if player.armor >= 1 and enemy.has_ammo("armor_piercing"): # Prioritize armor piercing if player's armor is strong
-            return "armor_piercing"
+        if player.armor >= 1 and enemy.has_ammo(AmmoType.ARMOR_PIERCING): # Prioritize armor piercing if player's armor is strong
+            return AmmoType.ARMOR_PIERCING
         
-        if enemy.has_ammo("standard"):
-            return "standard"
+        if enemy.has_ammo(AmmoType.STANDARD):
+            return AmmoType.STANDARD
         
         available = enemy.available_ammo_types()
-        if available:
-            return random.choice(available)
-        
-        return None
+        return random.choice(available) if available else None
     
-    def enemy_reload_ammo(self) -> str | None:
+    def enemy_reload_ammo(self) -> AmmoType | None:
         player = self.player
         enemy = self.enemy
 
-        if player.shield > 10 and enemy.ammo.get("shield_breaker", 0) == 0:
-            return "shield_breaker"
+        if player.shield > 10 and enemy.ammo.get(AmmoType.SHIELD_BREAKER, 0) == 0:
+            return AmmoType.SHIELD_BREAKER
         
-        if player.armor > 10 and enemy.ammo.get("armor_piercing", 0) == 0:
-            return "armor_piercing"
+        if player.armor > 10 and enemy.ammo.get(AmmoType.ARMOR_PIERCING, 0) == 0:
+            return AmmoType.ARMOR_PIERCING
+        return None
     
     def generate_enemy(self, wave: int) -> Meka:
         names = ["Cadet", "Ranger", "Officer", "Marshal"]
@@ -360,9 +371,9 @@ class Game:
         attack = min(attack, 20) # Cap attack at 20
 
         ammo = {
-            "standard": min(5 + wave, 15), # Base 5, +1 per wave, cap at 15
-            "armor_piercing": min(2 + wave, 10), # Base 2, +1 per wave, cap at 10
-            "shield_breaker": min(3 + wave, 10), # Base 3, +1 per wave, cap at 10
+            AmmoType.STANDARD: min(5 + wave, 15), # Base 5, +1 per wave, cap at 15
+            AmmoType.ARMOR_PIERCING: min(2 + wave, 10), # Base 2, +1 per wave, cap at 10
+            AmmoType.SHIELD_BREAKER: min(3 + wave, 10), # Base 3, +1 per wave, cap at 10
         }
 
         return Meka(f"{name}", power, 0, armor, shield, ammo, attack)
@@ -387,9 +398,9 @@ def main() -> None:
     input("\nPress Enter to battle...")
     
     player = Meka(pilot_name, 100, 0, 50, 50, {
-        "standard": 10,
-        "armor_piercing": 10,
-        "shield_breaker": 10,
+        AmmoType.STANDARD: 10,
+        AmmoType.ARMOR_PIERCING: 10,
+        AmmoType.SHIELD_BREAKER: 10,
     }, 10)
 
     game = Game(player)
