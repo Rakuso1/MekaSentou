@@ -308,14 +308,24 @@ class Game:
         })
         scores.sort(key=lambda x: x["waves"], reverse=True)
         scores = scores[:10] # Keep only top 10 scores
-        with open(LEADERBOARD_FILE, "w") as f:
-            json.dump(scores, f, indent=2)
+        try:
+            with open(LEADERBOARD_FILE, "w") as f:
+                json.dump(scores, f, indent=2)
+        except OSError as e:
+            print(f"Warning: Error saving leaderboard: {e}")
 
     def load_scores(self) -> list[dict[str, str | int]]:
-        if not os.path.exists(LEADERBOARD_FILE):
+        try:
+            with open(LEADERBOARD_FILE, "r") as f:
+                return json.load(f)
+        except FileNotFoundError:
             return []
-        with open(LEADERBOARD_FILE, "r") as f:
-            return json.load(f)
+        except json.JSONDecodeError:
+            print("Warning: Leaderboard file is corrupted. Scores reset.")
+            return []
+        except OSError as e:
+            print(f"Warning: Error loading leaderboard: {e}")
+            return []
         
     def show_leaderboard(self) -> None:
         scores = self.load_scores()
