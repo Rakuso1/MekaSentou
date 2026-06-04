@@ -458,8 +458,8 @@ class Game:
         print(f"Game Over! You Survived {self.wave} waves.")
         print("\nFinal Stats")
         MekaDisplay.render_status(self.player)
-        self.save_score()
-        self.show_leaderboard()
+        scores = self.save_score()
+        self.show_leaderboard(scores)
         input("\nPress Enter to exit...")
 
     def save_score(self) -> None:
@@ -477,6 +477,7 @@ class Game:
                 json.dump(scores, f, indent=2)
         except OSError as e:
             print(f"Warning: Error saving leaderboard: {e}")
+        return scores
 
     def load_scores(self) -> list[dict[str, str | int]]:
         """Load scores from disk. Returns an empty list if the file is missing or corrupted."""
@@ -492,9 +493,8 @@ class Game:
             print(f"Warning: Error loading leaderboard: {e}")
             return []
         
-    def show_leaderboard(self) -> None:
+    def show_leaderboard(self, scores: list[dict[str, str | int]]) -> None:
         """Print the leaderboard, highlighting the player's current run."""
-        scores = self.load_scores()
         print("\n========================")
         print("      LEADERBOARD")
         print("========================")
