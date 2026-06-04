@@ -6,6 +6,7 @@ import os
 import math
 import json
 from datetime import date
+from dataclasses import dataclass, field
 
 # --- Combat --------------------------------------------------------------
 STANDARD_CRIT_CHANCE: float = 0.25 # 25% chance for standard ammo to critically hit
@@ -117,28 +118,24 @@ class MekaDisplay:
         print(f"  Armor Piercing:   [{MekaDisplay.make_bar(meka.ammo.get(AmmoType.ARMOR_PIERCING, 0), MAX_SPECIAL_AMMO)}] {meka.ammo.get(AmmoType.ARMOR_PIERCING, 0)}/{MAX_SPECIAL_AMMO}")
         print(f"  Shield Breaker:   [{MekaDisplay.make_bar(meka.ammo.get(AmmoType.SHIELD_BREAKER, 0), MAX_SPECIAL_AMMO)}] {meka.ammo.get(AmmoType.SHIELD_BREAKER, 0)}/{MAX_SPECIAL_AMMO}")
 
-
+@dataclass
 class Meka:
-    def __init__(
-        self,
-        name: str,
-        power: int,
-        heat: int,
-        armor: int,
-        shield: int,
-        ammo: dict[AmmoType, int],
-        attack: int
-    ) -> None:
-        self.pilot_name: str = name
-        self.power: int = power
-        self.max_power: int = power
-        self.heat: int = heat
-        self.armor: int = armor
-        self.max_armor: int = armor
-        self.shield: int = shield
-        self.max_shield: int = shield
-        self.ammo: dict[AmmoType, int] = ammo
-        self.attack: int = attack
+    pilot_name: str
+    power: int
+    heat: int
+    armor: int
+    shield: int
+    ammo: dict[AmmoType, int]
+    attack: int
+    max_power: int = field(default=0, init=False)
+    max_armor: int = field(default=0, init=False)
+    max_shield: int = field(default=0, init=False)
+
+    def __post_init__(self) -> None:
+        self.max_power = self.power
+        self.max_armor = self.armor
+        self.max_shield = self.shield
+
 
     def apply_upgrade(self, choice: str) -> str:
         """Applies the chosen upgrade and returns a description of the upgrade."""
@@ -275,7 +272,7 @@ class Game:
             if choice in ("1", "2", "3", "4"):
                 break
             print("Invalid choice. Please enter 1, 2, 3, or 4.")
-            
+
         message = self.player.apply_upgrade(choice)
         print(message)
         healed = self.player.apply_post_battle_heal()
@@ -449,7 +446,15 @@ class Game:
             AmmoType.SHIELD_BREAKER: min(ENEMY_BASE_SPECIAL_AMMO + wave, MAX_SPECIAL_AMMO),
         }
 
-        return Meka(f"{name}", power, 0, armor, shield, ammo, attack)
+        return Meka(
+            pilot_name=name,
+            power=power,
+            heat=0,
+            armor=armor,
+            shield=shield,
+            ammo=ammo,
+            attack=attack,
+        )
 
     def pick_ammo(self) -> AmmoType:
         while True:
@@ -475,7 +480,7 @@ def main() -> None:
     input("\nPress Enter to battle...")
     
     player = Meka(
-        name=pilot_name,
+        pilot_name=pilot_name,
         power=PLAYER_START_POWER,
         heat=PLAYER_START_HEAT,
         armor=PLAYER_START_ARMOR,
