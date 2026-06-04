@@ -1,3 +1,9 @@
+"""
+MekaSentou - A turn-based mech combat game.
+
+Survive waves of enemy Mekas by managing
+ammo, heat, armor and shields. Each victory grants a stat upgrade.
+"""
 from __future__ import annotations
 from enum import Enum
 import random
@@ -99,8 +105,22 @@ def clear_screen() -> None:
     os.system('cls' if os.name == 'nt' else 'clear')
 
 class MekaDisplay:
+    """Handles all terminal rendering for Meka objects
+    
+    Keeps display logic fully separated from game logic,
+    following the single responsibility principle.
+    """
     @staticmethod
     def make_bar(value: int, max_value: int) -> str:
+        """Build a fixed-width ACCII progess bar.
+        
+        Args:
+            value: The current value to represent
+            max_value: The maximum posibble value (full bar).
+            
+        Returns:
+            A string of STATUS_BAR_LENGHT characters using █ and -. 
+        """
         filled = int((value / max_value) * STATUS_BAR_LENGTH) if max_value else 0
         filled = max(0, min(STATUS_BAR_LENGTH, filled))
         empty = STATUS_BAR_LENGTH - filled
@@ -108,6 +128,7 @@ class MekaDisplay:
     
     @staticmethod
     def render_status(meka: "Meka") -> None:
+        """Print a full status readout for a Meka to the terminal."""
         print(f"\n{meka.pilot_name}")
         print(f"Power:  [{MekaDisplay.make_bar(meka.power, meka.max_power)}] {meka.power}/{meka.max_power}")
         print(f"Heat:   [{MekaDisplay.make_bar(meka.heat, MAX_HEAT)}] {meka.heat}/{MAX_HEAT}")
@@ -120,6 +141,20 @@ class MekaDisplay:
 
 @dataclass
 class Meka:
+    """A combat Meka unit with layered defences: shield -> armor -> power.
+    
+    Damage passes through each layer in order. If layer is depleted, leftover
+    damage is lost.
+    
+    Atributes:
+        pilot_name: Display name shown in combat.
+        power: Current HP.
+        heat: Accumulates when firing. At MAX_HEAT the Meka cannot fire.
+        armor: First physical layer. Doubles damage taken from armor_piercing.
+        shield: Outer layer. Doubles damage taken from shield_breaker.
+        ammo: Remaining rounds per ammo type.
+        attack: Base damage output before variance.
+    """
     pilot_name: str
     power: int
     heat: int
@@ -132,13 +167,21 @@ class Meka:
     max_shield: int = field(default=0, init=False)
 
     def __post_init__(self) -> None:
+        """Initialise derived max-stat fields from their starting values."""
         self.max_power = self.power
         self.max_armor = self.armor
         self.max_shield = self.shield
 
 
     def apply_upgrade(self, choice: str) -> str:
-        """Applies the chosen upgrade and returns a description of the upgrade."""
+        """Applies a stat upgrade from a menu choice.
+        
+        Args:
+            choice: The player's input string ("1"-"4").
+            
+        Returns:
+            A human-readable message describing what changed.
+        """
         if choice == "1":
             self.max_power += LEVEL_UP_POWER_BONUS
             self.power += LEVEL_UP_POWER_BONUS
@@ -159,31 +202,46 @@ class Meka:
             return f"Attack increased by {LEVEL_UP_ATTACK_BONUS}!"
         
     def apply_post_battle_heal(self) -> int:
-        """Heal POST_BATTLE_HEAL_RATE of max power. Returns the amount healed."""
+        """Restore POST_BATTLE_HEAL_RATE of max power after a victory.
+        
+        Returns:
+            The number of power points restored.
+        """
         heal = math.ceil(self.max_power * POST_BATTLE_HEAL_RATE)
         self.power = min(self.max_power, self.power + heal)
         return heal
 
     def ammo_total(self) -> int:
+        """Return the total number of rounds across all ammo types."""
         return sum(self.ammo.values())
 
     def has_ammo(self, ammo_type: AmmoType) -> bool:
+        """Return True if at least one round of ammo_type remains."""
         return self.ammo.get(ammo_type, 0) > 0
 
     def consume_ammo(self, ammo_type: AmmoType) -> None:
+        """Spend one round of ammo_type if any remain."""
         if self.has_ammo(ammo_type):
             self.ammo[ammo_type] -= 1
 
     def reload_ammo(self, ammo_type: AmmoType) -> None:
+        """Refill ammo_type"""
         if ammo_type == AmmoType.STANDARD:
             self.ammo[ammo_type] = min(self.ammo.get(ammo_type, 0) + STANDARD_AMMO_RELOAD_AMOUNT, MAX_STANDARD_AMMO)
         else:
             self.ammo[ammo_type] = min(self.ammo.get(ammo_type, 0) + SPECIAL_AMMO_RELOAD_AMOUNT, MAX_SPECIAL_AMMO)
     
     def is_alive(self) -> bool:
+        """Return True if the Meka still has power remaining."""
         return self.power > 0
     
     def take_damage(self, damage: int, ammo_type: AmmoType) -> None:
+        """Apply incoming damage through the shield -> armor -> power layers.
+        
+        Args:
+            damage: Raw incoming damage before layer absorption.
+            ammo_type: Determines which layer receives double damage.
+        """
         shield_multiplier = 2 if ammo_type == AmmoType.SHIELD_BREAKER else 1
         armor_multiplier = 2 if ammo_type == AmmoType.ARMOR_PIERCING else 1
 
@@ -199,6 +257,20 @@ class Meka:
             self.power = max(0, self.power - damage)
 
     def _absorb(self, damage: int, layer: str, multiplier: int) -> int:
+        """Absorb damage into one defensive layer.
+        
+        If the layer is fully depleted, excess damage is intentionally lost
+        and does not carry through to the hext layer.
+        
+        Args:
+            damage: Incoming damage before the multiplier is applied.
+            layer: Attribute name of the layer ("shield" or "armor").
+            multiplier: Damage multiplier for the relevant ammo type.
+            
+        Returns:
+            Remaining damage that passed through the layer, or 0 if the
+            layer was fully depleted.
+        """
         current = getattr(self, layer)
         effective_damage = min(current, damage * multiplier)
         setattr(self, layer, current - effective_damage)
@@ -209,15 +281,19 @@ class Meka:
             return max(0, damage - math.ceil(effective_damage / multiplier))
 
     def check_overheat(self) -> bool:
+        """Return True if the Meka has reached maximum heat and cannot fire."""
         return self.heat >= MAX_HEAT
     
     def apply_heat(self) -> None:
+        """Increase heat by a random amount within the configured range."""
         self.heat = min(self.heat + random.randint(HEAT_GAIN_MIN, HEAT_GAIN_MAX), MAX_HEAT)
     
     def cool_down(self) -> None:
+        """Reset heat to zero."""
         self.heat = 0 
 
     def recharge_shield(self) -> None:
+        """Spend a portion of current power to partially restore shields."""
         cost = math.ceil(self.power * SHIELD_RECHARGE_COST_RATE)
         missing_shield = self.max_shield - self.shield
         gain = math.ceil(missing_shield * SHIELD_RECHARGE_GAIN_RATE)
@@ -225,15 +301,24 @@ class Meka:
         self.shield = min(self.shield + gain, self.max_shield) 
 
     def available_ammo_types(self) -> list[AmmoType]:
+        """Return all ammo types that still have at least one round remaining."""
         return [ammo_type for ammo_type, count in self.ammo.items() if count > 0]
 
 class Game:
+    """Manages the overall game loop, wave progression, and battle resolution.
+    
+    Atributes:
+        player: The human player's Meka.
+        enemy: The current enemy Meka. None between waves.
+        wave: Current wave numbre, increments after each victory.
+    """
     def __init__(self, player: Meka) -> None:
         self.player: Meka = player
         self.enemy: Meka | None = None
         self.wave: int = 1
 
     def run(self) -> None:
+        """Main loop - spawn enemies and advance waves until the player is destroyed"""
         while self.player.is_alive():
             self.enemy = self.generate_enemy(self.wave)
             print(f"\n{self.enemy.pilot_name} approaches! Prepare for battle!")
@@ -248,6 +333,7 @@ class Game:
         self.end_game()
 
     def battle_loop(self) -> None:
+        """Run one complete battle until either Meka's power reaches zero."""
         while self.player.is_alive() and self.enemy.is_alive():
             clear_screen()
             MekaDisplay.render_status(self.player)
@@ -260,6 +346,7 @@ class Game:
             time.sleep(2)
 
     def handle_upgrade(self) -> None:
+        """Manage the full upgrade sequence: display, prompt, upgrade and heal."""
         MekaDisplay.render_status(self.player)
         print(f"\nLevel Up!. Choose your upgrade:")
         print(f"1. Increase Max Power (+{LEVEL_UP_POWER_BONUS})")
@@ -280,6 +367,7 @@ class Game:
 
 
     def player_choose(self) -> dict[str, ActionType | AmmoType]:
+        """Prompt the player to pick an action. Re-prompts on invalid input or empty ammo."""
         while True:
             print("\nChoose your action:")
             print("1. Attack")
@@ -307,7 +395,8 @@ class Game:
             else:
                 print("Invalid action. Please enter 1, 2, 3, or 4.")
             
-    def enemy_choose(self) -> dict[str, str]:
+    def enemy_choose(self) -> dict[str, ActionType | AmmoType]:
+        """Determine the enemy's action using priority-based AI."""
         if self.enemy.check_overheat():
             return {"type": ActionType.COOL_DOWN}
         
@@ -318,7 +407,8 @@ class Game:
             ammo_reload = self.enemy_reload_ammo()
             return {"type": ActionType.RELOAD, "ammo": ammo_reload or AmmoType.STANDARD}
     
-    def resolve(self, player_action: dict[str, str], enemy_action: dict[str, str]) -> None:
+    def resolve(self, player_action: dict[str, ActionType | AmmoType], enemy_action: dict[str, ActionType | AmmoType]) -> None:
+        """Calculate and apply both sides actions simultaneously."""
         player_damage =  self.calculate_damage(self.player, player_action)
         enemy_damage = self.calculate_damage(self.enemy, enemy_action)
 
@@ -326,6 +416,12 @@ class Game:
         self.apply_action(self.enemy, self.player, enemy_action, enemy_damage)
 
     def calculate_damage(self, attacker: Meka, action: dict[str, ActionType | AmmoType]) -> int:
+        """Calculate raw damage for an attack action.
+        
+        Returns:
+            Damage dealt, including any critical hit multiplier.
+            Returns 0 for non-attack actions.
+        """
         if action["type"] != ActionType.ATTACK:
             return 0
         damage = attacker.attack + random.randint(-DAMAGE_VARIANCE, DAMAGE_VARIANCE)
@@ -334,6 +430,7 @@ class Game:
         return damage
     
     def apply_action(self, attacker: Meka, defender: Meka, action: dict[str, ActionType | AmmoType], damage: int) -> None:
+        """Execute one action and print the result to the terminal."""
         if action["type"] == ActionType.ATTACK:
             if attacker.check_overheat():
                 print(f"{attacker.pilot_name} Meka OVERHEATED and couldn't fire!")
@@ -356,6 +453,7 @@ class Game:
             print(f"{attacker.pilot_name} Meka recharged its shields!")
 
     def end_game(self) -> None:
+        """Display the game-over screen, save the score, and show the leaderboard."""
         clear_screen()
         print(f"Game Over! You Survived {self.wave} waves.")
         print("\nFinal Stats")
@@ -365,6 +463,7 @@ class Game:
         input("\nPress Enter to exit...")
 
     def save_score(self) -> None:
+        """Append this run to the leaderboard, keeping only the top MAX_LEADERBOARD_SCORES entries."""
         scores = self.load_scores()
         scores.append({
             "name": self.player.pilot_name,
@@ -380,6 +479,7 @@ class Game:
             print(f"Warning: Error saving leaderboard: {e}")
 
     def load_scores(self) -> list[dict[str, str | int]]:
+        """Load scores from disk. Returns an empty list if the file is missing or corrupted."""
         try:
             with open(LEADERBOARD_FILE, "r") as f:
                 return json.load(f)
@@ -393,6 +493,7 @@ class Game:
             return []
         
     def show_leaderboard(self) -> None:
+        """Print the leaderboard, highlighting the player's current run."""
         scores = self.load_scores()
         print("\n========================")
         print("      LEADERBOARD")
@@ -405,6 +506,11 @@ class Game:
             print(f"{arrow} {i}. {entry['name']:<20} {entry['waves']}  waves       {entry['date']}")
 
     def enemy_pick_ammo(self) -> AmmoType | None:
+        """Choose the best ammo type based on the player's current defences.
+        
+        Returns:
+            The chosen AmmoType, or None if the enemy has no ammo left.
+        """
         player = self.player
         enemy = self.enemy
 
@@ -421,6 +527,11 @@ class Game:
         return random.choice(available) if available else None
     
     def enemy_reload_ammo(self) -> AmmoType | None:
+        """Choose which ammo to reload based on the player's current stats.
+        
+        Returns:
+            The AmmoType to reload, or None if no reload is prioritised.
+        """
         player = self.player
         enemy = self.enemy
 
@@ -432,6 +543,14 @@ class Game:
         return None
     
     def generate_enemy(self, wave: int) -> Meka:
+        """Create a wave-scaled enemy Meka with stats capped at defined maximums.
+        
+        Args:
+            wave: Current wave number, used to scale all stats.
+            
+        Returns:
+            A new enemy Meka ready for battle.
+        """
         names = ["Cadet", "Ranger", "Officer", "Marshal"]
         name = names[min(wave - 1, len(names) - 1)] # caps name at "Marshal" for higher waves
 
@@ -457,6 +576,7 @@ class Game:
         )
 
     def pick_ammo(self) -> AmmoType:
+        """Prompt the player to choose an ammo type. Re-prompts on invalid input."""
         while True:
             print("\nChoose ammo type:")
             print("1. Standard - Can Critically Hit")
@@ -469,6 +589,7 @@ class Game:
             print("Invalid choice. Please enter 1, 2, or 3.")
 
 def main() -> None:
+    """Entry point - schow the title screen, create the player, and start the game."""
     print("========================")
     print("      メカ戦闘")
     print("========================")
