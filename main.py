@@ -5,10 +5,75 @@ import time
 import os
 import math
 import json
-from datetime import date 
+from datetime import date
 
-STANDARD_CRIT_CHANCE = 0.25 # 25% chance for standard ammo to critically hit
+# --- Combat --------------------------------------------------------------
+STANDARD_CRIT_CHANCE: float = 0.25 # 25% chance for standard ammo to critically hit
+CRIT_DAMAGE_MULTIPLIER: int = 4 # Critical hits do 4x damage
+DAMAGE_VARIANCE: int = 2 # Damage can vary by ±2 points
 
+# --- Heat ----------------------------------------------------------------
+MAX_HEAT: int = 100
+HEAT_GAIN_MIN: int = 10
+HEAT_GAIN_MAX: int = 15
+
+# --- Ammo ----------------------------------------------------------------
+MAX_STANDARD_AMMO: int = 10
+MAX_SPECIAL_AMMO: int = 10
+STANDARD_AMMO_RELOAD_AMOUNT: int = 10
+SPECIAL_AMMO_RELOAD_AMOUNT: int = 5
+
+# --- Shield Recharge -----------------------------------------------------
+SHIELD_RECHARGE_COST_RATE: float = 0.2 # 20% of current power
+SHIELD_RECHARGE_GAIN_RATE: float = 0.8 # 80% of missing shield
+
+# --- Level Up Bonuses ----------------------------------------------------
+LEVEL_UP_POWER_BONUS: int = 20
+LEVEL_UP_ARMOR_BONUS: int = 10
+LEVEL_UP_SHIELD_BONUS: int = 10
+LEVEL_UP_ATTACK_BONUS: int = 5
+POST_BATTLE_HEAL_RATE: float = 0.5 # Heal 50% of max power after each victory
+
+# --- Enemy Scaling -------------------------------------------------------
+ENEMY_BASE_POWER: int = 80
+ENEMY_POWER_PER_WAVE: int = 10
+ENEMY_MAX_POWER: int = 300
+
+ENEMY_BASE_ARMOR: int = 20
+ENEMY_ARMOR_PER_WAVE: int = 5
+ENEMY_MAX_ARMOR: int = 150
+
+ENEMY_BASE_SHIELD: int = 10
+ENEMY_SHIELD_PER_WAVE: int = 5
+ENEMY_MAX_SHIELD: int = 150
+
+ENEMY_BASE_ATTACK: int = 4
+ENEMY_ATTACK_PER_WAVE: int = 1
+ENEMY_MAX_ATTACK: int = 20
+
+ENEMY_BASE_STANDARD_AMMO: int = 5
+ENEMY_BASE_SPECIAL_AMMO: int = 3
+
+# --- Enemy AI ------------------------------------------------------------
+ENEMY_SHIELD_THREAT_THRESHOLD: int = 1 # If player's shield is above this, enemy prioritizes shield breaker
+ENEMY_ARMOR_THREAT_THRESHOLD: int = 1 # If player's armor is above this, enemy prioritizes armor piercing
+ENEMY_RELOAD_THREAT_THRESHOLD: int = 10 # If player shield / armor is above this and enemy is out of corresponding ammo, enemy prioritizes reloading that ammo
+
+# --- Player Starting Stats -----------------------------------------------
+PLAYER_START_POWER: int = 100
+PLAYER_START_HEAT: int = 0
+PLAYER_START_ARMOR: int = 50
+PLAYER_START_SHIELD: int = 50
+PLAYER_START_STANDARD_AMMO: int = 10
+PLAYER_START_ARMOR_PIERCING_AMMO: int = 10
+PLAYER_START_SHIELD_BREAKER_AMMO: int = 10
+PLAYER_START_ATTACK: int = 10
+
+# --- UI ------------------------------------------------------------------
+STATUS_BAR_LENGTH: int = 10
+
+# --- Game Settings -------------------------------------------------------
+MAX_LEADERBOARD_SCORES: int = 10
 
 LEADERBOARD_FILE = "leaderboard.json"
 
@@ -35,23 +100,22 @@ def clear_screen() -> None:
 class MekaDisplay:
     @staticmethod
     def make_bar(value: int, max_value: int) -> str:
-        bar_length = 10
-        filled = int((value / max_value) * bar_length) if max_value else 0
-        filled = max(0, min(bar_length, filled))
-        empty = bar_length - filled
+        filled = int((value / max_value) * STATUS_BAR_LENGTH) if max_value else 0
+        filled = max(0, min(STATUS_BAR_LENGTH, filled))
+        empty = STATUS_BAR_LENGTH - filled
         return "█" * filled + "-" * empty
     
     @staticmethod
     def render_status(meka: "Meka") -> None:
         print(f"\n{meka.pilot_name}")
         print(f"Power:  [{MekaDisplay.make_bar(meka.power, meka.max_power)}] {meka.power}/{meka.max_power}")
-        print(f"Heat:   [{MekaDisplay.make_bar(meka.heat, 100)}] {meka.heat}/100")
+        print(f"Heat:   [{MekaDisplay.make_bar(meka.heat, MAX_HEAT)}] {meka.heat}/{MAX_HEAT}")
         print(f"Armor:  [{MekaDisplay.make_bar(meka.armor, meka.max_armor)}] {meka.armor}/{meka.max_armor}")
         print(f"Shield: [{MekaDisplay.make_bar(meka.shield, meka.max_shield)}] {meka.shield}/{meka.max_shield}")
         print(f"Ammo:   {meka.ammo_total()}")
-        print(f"  Standard:        [{MekaDisplay.make_bar(meka.ammo.get(AmmoType.STANDARD, 0), 10)}] {meka.ammo.get(AmmoType.STANDARD, 0)}/10")
-        print(f"  Armor Piercing:   [{MekaDisplay.make_bar(meka.ammo.get(AmmoType.ARMOR_PIERCING, 0), 10)}] {meka.ammo.get(AmmoType.ARMOR_PIERCING, 0)}/10")
-        print(f"  Shield Breaker:   [{MekaDisplay.make_bar(meka.ammo.get(AmmoType.SHIELD_BREAKER, 0), 10)}] {meka.ammo.get(AmmoType.SHIELD_BREAKER, 0)}/10")
+        print(f"  Standard:        [{MekaDisplay.make_bar(meka.ammo.get(AmmoType.STANDARD, 0), MAX_STANDARD_AMMO)}] {meka.ammo.get(AmmoType.STANDARD, 0)}/{MAX_STANDARD_AMMO}")
+        print(f"  Armor Piercing:   [{MekaDisplay.make_bar(meka.ammo.get(AmmoType.ARMOR_PIERCING, 0), MAX_SPECIAL_AMMO)}] {meka.ammo.get(AmmoType.ARMOR_PIERCING, 0)}/{MAX_SPECIAL_AMMO}")
+        print(f"  Shield Breaker:   [{MekaDisplay.make_bar(meka.ammo.get(AmmoType.SHIELD_BREAKER, 0), MAX_SPECIAL_AMMO)}] {meka.ammo.get(AmmoType.SHIELD_BREAKER, 0)}/{MAX_SPECIAL_AMMO}")
 
 
 class Meka:
@@ -82,36 +146,36 @@ class Meka:
         self.level += 1
         MekaDisplay.render_status(self)
         print(f"\nLevel Up! You are now level {self.level}. Choose your upgrade:")
-        print("1. Increase Max Power (+20)")
-        print("2. Increase Armor (+10)")
-        print("3. Increase Shield (+10)")
-        print("4. Increase Attack (+5)")
+        print(f"1. Increase Max Power (+{LEVEL_UP_POWER_BONUS})")
+        print(f"2. Increase Armor (+{LEVEL_UP_ARMOR_BONUS})")
+        print(f"3. Increase Shield (+{LEVEL_UP_SHIELD_BONUS})")
+        print(f"4. Increase Attack (+{LEVEL_UP_ATTACK_BONUS})")
         choice = input(">> ")
 
         if choice == "1":
-            self.max_power += 20
-            self.power += 20 # Also heal current power by 20 when max power increases
-            print("Max Power increased by 20!")
+            self.max_power += LEVEL_UP_POWER_BONUS
+            self.power += LEVEL_UP_POWER_BONUS
+            print(f"Max Power increased by {LEVEL_UP_POWER_BONUS}!")
 
         elif choice == "2":
-            self.max_armor += 10
-            self.armor += 10 # Also heal current armor by 10 when max armor increases
-            print("Armor increased by 10!")
+            self.max_armor += LEVEL_UP_ARMOR_BONUS
+            self.armor += LEVEL_UP_ARMOR_BONUS
+            print(f"Armor increased by {LEVEL_UP_ARMOR_BONUS}!")
 
         elif choice == "3":
-            self.max_shield += 10
-            self.shield += 10 # Also heal current shield by 10 when max shield increases
-            print("Shield increased by 10!")
+            self.max_shield += LEVEL_UP_SHIELD_BONUS
+            self.shield += LEVEL_UP_SHIELD_BONUS
+            print(f"Shield increased by {LEVEL_UP_SHIELD_BONUS}!")
 
         elif choice == "4":
-            self.attack += 5
-            print("Attack increased by 5!")
+            self.attack += LEVEL_UP_ATTACK_BONUS
+            print(f"Attack increased by {LEVEL_UP_ATTACK_BONUS}!")
 
         else:
-            self.attack += 5
-            print("Attack increased by 5 by default!")
+            self.attack += LEVEL_UP_ATTACK_BONUS
+            print(f"Attack increased by {LEVEL_UP_ATTACK_BONUS} by default!")
 
-        heal = math.ceil(self.max_power * 0.5) # Heal 50% of max power after each victory
+        heal = math.ceil(self.max_power * POST_BATTLE_HEAL_RATE)
         self.power = min(self.max_power, self.power + heal)
         print(f"Emergency repairs complete! Power restored by {heal} points.")
 
@@ -127,9 +191,9 @@ class Meka:
 
     def reload_ammo(self, ammo_type: AmmoType) -> None:
         if ammo_type == AmmoType.STANDARD:
-            self.ammo[ammo_type] = min(self.ammo.get(ammo_type, 0) + 10, 10)
+            self.ammo[ammo_type] = min(self.ammo.get(ammo_type, 0) + STANDARD_AMMO_RELOAD_AMOUNT, MAX_STANDARD_AMMO)
         else:
-            self.ammo[ammo_type] = min(self.ammo.get(ammo_type, 0) + 5, 10)
+            self.ammo[ammo_type] = min(self.ammo.get(ammo_type, 0) + SPECIAL_AMMO_RELOAD_AMOUNT, MAX_SPECIAL_AMMO)
     
     def is_alive(self) -> bool:
         return self.power > 0
@@ -160,20 +224,18 @@ class Meka:
             return max(0, damage - math.ceil(effective_damage / multiplier))
 
     def check_overheat(self) -> bool:
-        return self.heat >= 100
+        return self.heat >= MAX_HEAT
     
     def apply_heat(self) -> None:
-        self.heat += random.randint(10, 15)
-        if self.heat > 100:
-            self.heat = 100
+        self.heat = min(self.heat + random.randint(HEAT_GAIN_MIN, HEAT_GAIN_MAX), MAX_HEAT)
     
     def cool_down(self) -> None:
         self.heat = 0 
 
     def recharge_shield(self) -> None:
-        cost = math.ceil(self.power * 0.2) # Cost is 20% of current power, rounded up
+        cost = math.ceil(self.power * SHIELD_RECHARGE_COST_RATE)
         missing_shield = self.max_shield - self.shield
-        gain = math.ceil(missing_shield * 0.8) # Gain is 80% of missing shield, rounded up
+        gain = math.ceil(missing_shield * SHIELD_RECHARGE_GAIN_RATE)
         self.power = max(0, self.power - cost) 
         self.shield = min(self.shield + gain, self.max_shield) 
 
@@ -263,9 +325,9 @@ class Game:
     def calculate_damage(self, attacker: Meka, action: dict[str, ActionType | AmmoType]) -> int:
         if action["type"] != ActionType.ATTACK:
             return 0
-        damage = attacker.attack + random.randint(-2, 2)
+        damage = attacker.attack + random.randint(-DAMAGE_VARIANCE, DAMAGE_VARIANCE)
         if action["ammo"] == AmmoType.STANDARD and random.random() < STANDARD_CRIT_CHANCE:
-            damage *= 4
+            damage *= CRIT_DAMAGE_MULTIPLIER
         return damage
     
     def apply_action(self, attacker: Meka, defender: Meka, action: dict[str, ActionType | AmmoType], damage: int) -> None:
@@ -307,7 +369,7 @@ class Game:
             "date": str(date.today())
         })
         scores.sort(key=lambda x: x["waves"], reverse=True)
-        scores = scores[:10] # Keep only top 10 scores
+        scores = scores[:MAX_LEADERBOARD_SCORES] # Keep only top 10 scores
         try:
             with open(LEADERBOARD_FILE, "w") as f:
                 json.dump(scores, f, indent=2)
@@ -343,10 +405,10 @@ class Game:
         player = self.player
         enemy = self.enemy
 
-        if player.shield >= 1 and enemy.has_ammo(AmmoType.SHIELD_BREAKER): # Prioritize shield breaker if player's shield is strong
+        if player.shield >= ENEMY_SHIELD_THREAT_THRESHOLD and enemy.has_ammo(AmmoType.SHIELD_BREAKER): # Prioritize shield breaker if player's shield is strong
             return AmmoType.SHIELD_BREAKER
         
-        if player.armor >= 1 and enemy.has_ammo(AmmoType.ARMOR_PIERCING): # Prioritize armor piercing if player's armor is strong
+        if player.armor >= ENEMY_SHIELD_THREAT_THRESHOLD and enemy.has_ammo(AmmoType.ARMOR_PIERCING): # Prioritize armor piercing if player's armor is strong
             return AmmoType.ARMOR_PIERCING
         
         if enemy.has_ammo(AmmoType.STANDARD):
@@ -359,10 +421,10 @@ class Game:
         player = self.player
         enemy = self.enemy
 
-        if player.shield > 10 and enemy.ammo.get(AmmoType.SHIELD_BREAKER, 0) == 0:
+        if player.shield > ENEMY_RELOAD_THREAT_THRESHOLD and enemy.ammo.get(AmmoType.SHIELD_BREAKER, 0) == 0:
             return AmmoType.SHIELD_BREAKER
         
-        if player.armor > 10 and enemy.ammo.get(AmmoType.ARMOR_PIERCING, 0) == 0:
+        if player.armor > ENEMY_RELOAD_THREAT_THRESHOLD and enemy.ammo.get(AmmoType.ARMOR_PIERCING, 0) == 0:
             return AmmoType.ARMOR_PIERCING
         return None
     
@@ -370,20 +432,15 @@ class Game:
         names = ["Cadet", "Ranger", "Officer", "Marshal"]
         name = names[min(wave - 1, len(names) - 1)] # caps name at "Marshal" for higher waves
 
-        power = 80 + (wave * 10) # Base 80, +10 per wave
-        armor = 20 + (wave * 5) # Base 20, +5 per wave
-        shield = 10 + (wave * 5) # Base 10, +5 per wave
-        attack = 4 + (wave * 1 ) # Base 4, +1 per wave
-
-        power = min(power, 300) # Cap power at 300
-        armor = min(armor, 150) # Cap armor at 150
-        shield = min(shield, 150) # Cap shield at 150
-        attack = min(attack, 20) # Cap attack at 20
+        power = min(ENEMY_BASE_POWER + (wave * ENEMY_POWER_PER_WAVE), ENEMY_MAX_POWER)
+        armor = min(ENEMY_BASE_ARMOR + (wave * ENEMY_ARMOR_PER_WAVE), ENEMY_MAX_ARMOR)
+        shield = min(ENEMY_BASE_SHIELD + (wave * ENEMY_SHIELD_PER_WAVE), ENEMY_MAX_SHIELD)
+        attack = min(ENEMY_BASE_ATTACK + (wave * ENEMY_ATTACK_PER_WAVE), ENEMY_MAX_ATTACK)
 
         ammo = {
-            AmmoType.STANDARD: min(5 + wave, 15), # Base 5, +1 per wave, cap at 15
-            AmmoType.ARMOR_PIERCING: min(2 + wave, 10), # Base 2, +1 per wave, cap at 10
-            AmmoType.SHIELD_BREAKER: min(3 + wave, 10), # Base 3, +1 per wave, cap at 10
+            AmmoType.STANDARD: min(ENEMY_BASE_STANDARD_AMMO + wave, MAX_STANDARD_AMMO),
+            AmmoType.ARMOR_PIERCING: min(ENEMY_BASE_SPECIAL_AMMO + wave, MAX_SPECIAL_AMMO),
+            AmmoType.SHIELD_BREAKER: min(ENEMY_BASE_SPECIAL_AMMO + wave, MAX_SPECIAL_AMMO),
         }
 
         return Meka(f"{name}", power, 0, armor, shield, ammo, attack)
@@ -407,11 +464,19 @@ def main() -> None:
 
     input("\nPress Enter to battle...")
     
-    player = Meka(pilot_name, 100, 0, 50, 50, {
-        AmmoType.STANDARD: 10,
-        AmmoType.ARMOR_PIERCING: 10,
-        AmmoType.SHIELD_BREAKER: 10,
-    }, 10)
+    player = Meka(
+        name=pilot_name,
+        power=PLAYER_START_POWER,
+        heat=PLAYER_START_HEAT,
+        armor=PLAYER_START_ARMOR,
+        shield=PLAYER_START_SHIELD,
+        ammo={
+            AmmoType.STANDARD: PLAYER_START_STANDARD_AMMO,
+            AmmoType.ARMOR_PIERCING: PLAYER_START_ARMOR_PIERCING_AMMO,
+            AmmoType.SHIELD_BREAKER: PLAYER_START_SHIELD_BREAKER_AMMO,
+        },
+        attack=PLAYER_START_ATTACK,
+    )
 
     game = Game(player)
     game.run()
