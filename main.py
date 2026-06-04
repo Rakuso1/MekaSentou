@@ -269,43 +269,47 @@ class Game:
         print(f"2. Increase Armor (+{LEVEL_UP_ARMOR_BONUS})")
         print(f"3. Increase Shield (+{LEVEL_UP_SHIELD_BONUS})")
         print(f"4. Increase Attack (+{LEVEL_UP_ATTACK_BONUS})")
-        choice = input(">> ")
+
+        while True:
+            choice = input(">> ").strip()
+            if choice in ("1", "2", "3", "4"):
+                break
+            print("Invalid choice. Please enter 1, 2, 3, or 4.")
+            
         message = self.player.apply_upgrade(choice)
         print(message)
         healed = self.player.apply_post_battle_heal()
         print(f"Emergency repairs complete! Power restored by {healed} points.")
 
 
-    def player_choose(self) -> dict[str, str]:
-        print("\nChoose your action:")
-        print("1. Attack")
-        print("2. Cool Down")
-        print("3. Reload Ammo")
-        print("4. Recharge Shields")
-        choice = input(">> ")
+    def player_choose(self) -> dict[str, ActionType | AmmoType]:
+        while True:
+            print("\nChoose your action:")
+            print("1. Attack")
+            print("2. Cool Down")
+            print("3. Reload Ammo")
+            print("4. Recharge Shields")
+            choice = input(">> ").strip()
 
-        if choice == "1":
-            ammo_type = self.pick_ammo()
-            if ammo_type and self.player.has_ammo(ammo_type):
-                return {"type": ActionType.ATTACK, "ammo": ammo_type}
-            else:
-                print("Invalid action - defaulting to cool down.")
+            if choice == "1":
+                ammo_type = self.pick_ammo()
+                if self.player.has_ammo(ammo_type):
+                    return {"type": ActionType.ATTACK, "ammo": ammo_type}
+                print(f"No {ammo_type.value.replace('_', ' ')} ammo remaining! Choose another action.")
+
+            elif choice == "2":
                 return {"type": ActionType.COOL_DOWN}
 
-        elif choice == "2":
-            return {"type": ActionType.COOL_DOWN}
+            elif choice == "3":
+                ammo_type = self.pick_ammo()
+                return {"type": ActionType.RELOAD, "ammo": ammo_type}
+            
+            elif choice == "4":
+                return {"type": ActionType.RECHARGE_SHIELD}
 
-        elif choice == "3":
-            ammo_type = self.pick_ammo()
-            return {"type": ActionType.RELOAD, "ammo": ammo_type or AmmoType.STANDARD}
-        
-        elif choice == "4":
-            return {"type": ActionType.RECHARGE_SHIELD}
-
-        else:
-            print("Invalid action - defaulting to cool down.")
-            return {"type": ActionType.COOL_DOWN}
-        
+            else:
+                print("Invalid action. Please enter 1, 2, 3, or 4.")
+            
     def enemy_choose(self) -> dict[str, str]:
         if self.enemy.check_overheat():
             return {"type": ActionType.COOL_DOWN}
@@ -447,13 +451,17 @@ class Game:
 
         return Meka(f"{name}", power, 0, armor, shield, ammo, attack)
 
-    def pick_ammo(self) -> str | None:
-        print("\nChoose ammo type:")
-        print("1. Standard - Can Critically Hit")
-        print("2. Armor Piercing - Double Damage to Armor")
-        print("3. Shield Breaker - Double Damage to Shields")
-        ammo_choice = input(">> ")
-        return AMMO_TYPES.get(ammo_choice)
+    def pick_ammo(self) -> AmmoType:
+        while True:
+            print("\nChoose ammo type:")
+            print("1. Standard - Can Critically Hit")
+            print("2. Armor Piercing - Double Damage to Armor")
+            print("3. Shield Breaker - Double Damage to Shields")
+            choice = input(">> ").strip()
+            ammo = AMMO_TYPES.get(choice)
+            if ammo is not None:
+                return ammo
+            print("Invalid choice. Please enter 1, 2, or 3.")
 
 def main() -> None:
     print("========================")
