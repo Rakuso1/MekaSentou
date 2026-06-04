@@ -139,45 +139,33 @@ class Meka:
         self.max_shield: int = shield
         self.ammo: dict[AmmoType, int] = ammo
         self.attack: int = attack
-        self.exp: int = 0
-        self.level: int = 1
 
-    def level_up(self) -> None:
-        self.level += 1
-        MekaDisplay.render_status(self)
-        print(f"\nLevel Up! You are now level {self.level}. Choose your upgrade:")
-        print(f"1. Increase Max Power (+{LEVEL_UP_POWER_BONUS})")
-        print(f"2. Increase Armor (+{LEVEL_UP_ARMOR_BONUS})")
-        print(f"3. Increase Shield (+{LEVEL_UP_SHIELD_BONUS})")
-        print(f"4. Increase Attack (+{LEVEL_UP_ATTACK_BONUS})")
-        choice = input(">> ")
-
+    def apply_upgrade(self, choice: str) -> str:
+        """Applies the chosen upgrade and returns a description of the upgrade."""
         if choice == "1":
             self.max_power += LEVEL_UP_POWER_BONUS
             self.power += LEVEL_UP_POWER_BONUS
-            print(f"Max Power increased by {LEVEL_UP_POWER_BONUS}!")
-
+            return f"Max Power increased by {LEVEL_UP_POWER_BONUS}!"
+        
         elif choice == "2":
             self.max_armor += LEVEL_UP_ARMOR_BONUS
             self.armor += LEVEL_UP_ARMOR_BONUS
-            print(f"Armor increased by {LEVEL_UP_ARMOR_BONUS}!")
-
+            return f"Armor increased by {LEVEL_UP_ARMOR_BONUS}!"
+        
         elif choice == "3":
             self.max_shield += LEVEL_UP_SHIELD_BONUS
             self.shield += LEVEL_UP_SHIELD_BONUS
-            print(f"Shield increased by {LEVEL_UP_SHIELD_BONUS}!")
-
-        elif choice == "4":
-            self.attack += LEVEL_UP_ATTACK_BONUS
-            print(f"Attack increased by {LEVEL_UP_ATTACK_BONUS}!")
-
+            return f"Shield increased by {LEVEL_UP_SHIELD_BONUS}!"
+        
         else:
             self.attack += LEVEL_UP_ATTACK_BONUS
-            print(f"Attack increased by {LEVEL_UP_ATTACK_BONUS} by default!")
-
+            return f"Attack increased by {LEVEL_UP_ATTACK_BONUS}!"
+        
+    def apply_post_battle_heal(self) -> int:
+        """Heal POST_BATTLE_HEAL_RATE of max power. Returns the amount healed."""
         heal = math.ceil(self.max_power * POST_BATTLE_HEAL_RATE)
         self.power = min(self.max_power, self.power + heal)
-        print(f"Emergency repairs complete! Power restored by {heal} points.")
+        return heal
 
     def ammo_total(self) -> int:
         return sum(self.ammo.values())
@@ -257,7 +245,7 @@ class Game:
             if self.player.is_alive():
                 self.wave += 1
                 clear_screen()
-                self.player.level_up()
+                self.handle_upgrade()
                 time.sleep(3)
                 clear_screen()
         self.end_game()
@@ -273,6 +261,20 @@ class Game:
             time.sleep(1)
             self.resolve(player_action, enemy_action)
             time.sleep(2)
+
+    def handle_upgrade(self) -> None:
+        MekaDisplay.render_status(self.player)
+        print(f"\nLevel Up!. Choose your upgrade:")
+        print(f"1. Increase Max Power (+{LEVEL_UP_POWER_BONUS})")
+        print(f"2. Increase Armor (+{LEVEL_UP_ARMOR_BONUS})")
+        print(f"3. Increase Shield (+{LEVEL_UP_SHIELD_BONUS})")
+        print(f"4. Increase Attack (+{LEVEL_UP_ATTACK_BONUS})")
+        choice = input(">> ")
+        message = self.player.apply_upgrade(choice)
+        print(message)
+        healed = self.player.apply_post_battle_heal()
+        print(f"Emergency repairs complete! Power restored by {healed} points.")
+
 
     def player_choose(self) -> dict[str, str]:
         print("\nChoose your action:")
@@ -399,7 +401,7 @@ class Game:
             return
         for i, entry in enumerate(scores, 1):
             arrow = "->" if entry["name"] == self.player.pilot_name and entry["waves"] == self.wave else "  "
-            print(f"{arrow} {i}. {entry['name']:<20} {entry['waves']} waves       {entry['date']}")
+            print(f"{arrow} {i}. {entry['name']:<20} {entry['waves']}  waves       {entry['date']}")
 
     def enemy_pick_ammo(self) -> AmmoType | None:
         player = self.player
