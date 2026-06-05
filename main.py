@@ -13,6 +13,12 @@ import math
 import json
 from datetime import date
 from dataclasses import dataclass, field
+from rich.console import Console
+from rich.text import Text
+from rich.table import Table
+from rich import box
+
+console = Console()
 
 # --- Combat --------------------------------------------------------------
 STANDARD_CRIT_CHANCE: float = 0.25 # 25% chance for standard ammo to critically hit
@@ -111,33 +117,86 @@ class MekaDisplay:
     following the single responsibility principle.
     """
     @staticmethod
-    def make_bar(value: int, max_value: int) -> str:
-        """Build a fixed-width ACCII progess bar.
+    def make_bar(value: int, max_value: int, invert_color: bool = False) -> Text:
+        """Build a fixed-width ASCII progress bar.
         
         Args:
-            value: The current value to represent
+            value: The current value to represent.
             max_value: The maximum posibble value (full bar).
+            invert_color: True on heat bar.
             
         Returns:
-            A string of STATUS_BAR_LENGHT characters using █ and -. 
+            A rich Text class. 
         """
         filled = int((value / max_value) * STATUS_BAR_LENGTH) if max_value else 0
         filled = max(0, min(STATUS_BAR_LENGTH, filled))
         empty = STATUS_BAR_LENGTH - filled
-        return "█" * filled + "-" * empty
+
+        ratio = (value / max_value) if max_value else 0.0
+        if invert_color:
+            ratio = 1.0 - ratio
+
+        color = "green" if ratio > 0.5 else "yellow" if ratio > 0.25 else "red"
+
+        bar = Text()
+        bar.append("◼" * filled, style=color)
+        bar.append("-" * empty, style="dim")
+        return bar
     
     @staticmethod
     def render_status(meka: "Meka") -> None:
-        """Print a full status readout for a Meka to the terminal."""
-        print(f"\n{meka.pilot_name}")
-        print(f"Power:  [{MekaDisplay.make_bar(meka.power, meka.max_power)}] {meka.power}/{meka.max_power}")
-        print(f"Heat:   [{MekaDisplay.make_bar(meka.heat, MAX_HEAT)}] {meka.heat}/{MAX_HEAT}")
-        print(f"Armor:  [{MekaDisplay.make_bar(meka.armor, meka.max_armor)}] {meka.armor}/{meka.max_armor}")
-        print(f"Shield: [{MekaDisplay.make_bar(meka.shield, meka.max_shield)}] {meka.shield}/{meka.max_shield}")
-        print(f"Ammo:   {meka.ammo_total()}")
-        print(f"  Standard:        [{MekaDisplay.make_bar(meka.ammo.get(AmmoType.STANDARD, 0), MAX_STANDARD_AMMO)}] {meka.ammo.get(AmmoType.STANDARD, 0)}/{MAX_STANDARD_AMMO}")
-        print(f"  Armor Piercing:   [{MekaDisplay.make_bar(meka.ammo.get(AmmoType.ARMOR_PIERCING, 0), MAX_SPECIAL_AMMO)}] {meka.ammo.get(AmmoType.ARMOR_PIERCING, 0)}/{MAX_SPECIAL_AMMO}")
-        print(f"  Shield Breaker:   [{MekaDisplay.make_bar(meka.ammo.get(AmmoType.SHIELD_BREAKER, 0), MAX_SPECIAL_AMMO)}] {meka.ammo.get(AmmoType.SHIELD_BREAKER, 0)}/{MAX_SPECIAL_AMMO}")
+        """Print a status dashboard with heat warnings."""
+        console.print(f"\n[bold magenta]{meka.pilot_name}[/bold magenta]\n")
+        
+        table = Table(show_header=False, show_edge=False, box=box.SIMPLE)
+        
+        # Define our columns (System Name, Bar, Text Stats)
+        table.add_column("System", justify="right", style="bold cyan")
+        table.add_column("Bar", justify="left")
+        table.add_column("Numbers", justify="left", style="dim")
+
+        # Add rows for the core stats
+        table.add_row("Power:", MekaDisplay.make_bar(meka.power, meka.max_power), f"{meka.power}/{meka.max_power}")
+
+        # Heat row - uses invert_color and conditional warning label
+        heat_numbers = Text(f"{meka.heat}/{MAX_HEAT}")
+        if meka.heat >= MAX_HEAT:
+            heat_numbers.append("  OVERHEATED", style="bold red")
+        elif meka.heat >= MAX_HEAT * 0.8:
+            heat_numbers.append("  CRITICAL", style="bold red")
+        elif meka.heat >= MAX_HEAT * 0.5:
+            heat_numbers.append("  WARNING", style="yellow")
+
+        table.add_row("Heat:", MekaDisplay.make_bar(meka.heat, MAX_HEAT, invert_color=True), heat_numbers)
+        table.add_row("Armor:", MekaDisplay.make_bar(meka.armor, meka.max_armor), f"{meka.armor}/{meka.max_armor}")
+        table.add_row("Shield:", MekaDisplay.make_bar(meka.shield, meka.max_shield), f"{meka.shield}/{meka.max_shield}")
+        
+        # Add a blank row or separator for ammo
+        table.add_row("", "", "") 
+        table.add_row(f"Ammo ({meka.ammo_total()})", "", "")
+        
+        # Add rows for Ammo Subtypes
+        std_ammo = meka.ammo.get(AmmoType.STANDARD, 0)
+        ap_ammo = meka.ammo.get(AmmoType.ARMOR_PIERCING, 0)
+        sb_ammo = meka.ammo.get(AmmoType.SHIELD_BREAKER, 0)
+
+        std_ammo_numbers = Text(f"{std_ammo}/{MAX_STANDARD_AMMO}")
+        if std_ammo <= MAX_STANDARD_AMMO * 0.2:
+            std_ammo_numbers.append(" LOW AMMO", style= "bold red")
+        table.add_row("Standard:", MekaDisplay.make_bar(std_ammo, MAX_STANDARD_AMMO), std_ammo_numbers)
+
+        ap_ammo_numbers = Text(f"{ap_ammo}/{MAX_SPECIAL_AMMO}")
+        if ap_ammo <= MAX_SPECIAL_AMMO * 0.2:
+            std_ammo_numbers.append(" LOW AMMO", style= "bold red")
+        table.add_row("Armor Piercing:", MekaDisplay.make_bar(ap_ammo, MAX_SPECIAL_AMMO), ap_ammo_numbers)
+
+        sb_ammo_numbers = Text(f"{sb_ammo}/{MAX_SPECIAL_AMMO}")
+        if sb_ammo <= MAX_SPECIAL_AMMO * 0.2:
+            sb_ammo_numbers.append(" LOW AMMO", style= "bold red")
+        table.add_row("Shield Breaker:", MekaDisplay.make_bar(sb_ammo, MAX_SPECIAL_AMMO), sb_ammo_numbers)
+
+        # Print the finished table to the console
+        console.print(table)
 
 @dataclass
 class Meka:
