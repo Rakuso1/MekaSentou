@@ -19,7 +19,7 @@ from rich.console import Console
 from rich.text import Text
 from rich.table import Table
 from rich import box
-from typing import NamedTuple
+from typing import NamedTuple, Literal
 
 console = Console()
 
@@ -38,6 +38,7 @@ MAX_STANDARD_AMMO: int = 10
 MAX_SPECIAL_AMMO: int = 10
 STANDARD_AMMO_RELOAD_AMOUNT: int = 10
 SPECIAL_AMMO_RELOAD_AMOUNT: int = 5
+LOW_AMMO_THRESHOLD: int = 2
 
 # --- Shield Recharge -----------------------------------------------------
 SHIELD_RECHARGE_COST_RATE: float = 0.2 # 20% of current power
@@ -104,6 +105,18 @@ AMMO_TYPES: dict[str, AmmoType] = {
     "1": AmmoType.STANDARD,
     "2": AmmoType.ARMOR_PIERCING,
     "3": AmmoType.SHIELD_BREAKER,
+}
+
+AMMO_DESCRIPTIONS: dict[AmmoType, str] = {
+    AmmoType.STANDARD:       "Standard       - Can Critically Hit",
+    AmmoType.ARMOR_PIERCING: "Armor Piercing - Double Damage to Armor",
+    AmmoType.SHIELD_BREAKER: "Shield Breaker - Double Damage to Shields",
+}
+
+AMMO_MAX: dict[AmmoType, int] = {
+    AmmoType.STANDARD: MAX_STANDARD_AMMO,
+    AmmoType.ARMOR_PIERCING: MAX_SPECIAL_AMMO,
+    AmmoType.SHIELD_BREAKER: MAX_SPECIAL_AMMO
 }
 
 class ActionType(Enum):
@@ -194,20 +207,9 @@ class Display:
         ap_ammo = meka.ammo.get(AmmoType.ARMOR_PIERCING, 0)
         sb_ammo = meka.ammo.get(AmmoType.SHIELD_BREAKER, 0)
 
-        std_ammo_numbers = Text(f"{std_ammo}/{MAX_STANDARD_AMMO}")
-        if std_ammo <= MAX_STANDARD_AMMO * 0.2:
-            std_ammo_numbers.append(" LOW AMMO", style= "bold red")
-        table.add_row("Standard:", Display.make_bar(std_ammo, MAX_STANDARD_AMMO), std_ammo_numbers)
-
-        ap_ammo_numbers = Text(f"{ap_ammo}/{MAX_SPECIAL_AMMO}")
-        if ap_ammo <= MAX_SPECIAL_AMMO * 0.2:
-            std_ammo_numbers.append(" LOW AMMO", style= "bold red")
-        table.add_row("Armor Piercing:", Display.make_bar(ap_ammo, MAX_SPECIAL_AMMO), ap_ammo_numbers)
-
-        sb_ammo_numbers = Text(f"{sb_ammo}/{MAX_SPECIAL_AMMO}")
-        if sb_ammo <= MAX_SPECIAL_AMMO * 0.2:
-            sb_ammo_numbers.append(" LOW AMMO", style= "bold red")
-        table.add_row("Shield Breaker:", Display.make_bar(sb_ammo, MAX_SPECIAL_AMMO), sb_ammo_numbers)
+        table.add_row("Standard:", Display.make_bar(std_ammo, MAX_STANDARD_AMMO), f"{std_ammo}/{MAX_STANDARD_AMMO}")
+        table.add_row("Armor Piercing:", Display.make_bar(ap_ammo, MAX_SPECIAL_AMMO), f"{ap_ammo}/{MAX_SPECIAL_AMMO}")
+        table.add_row("Shield Breaker:", Display.make_bar(sb_ammo, MAX_SPECIAL_AMMO), f"{sb_ammo}/{MAX_SPECIAL_AMMO}")
 
         # Print the finished table to the console
         console.print(table)
@@ -489,33 +491,36 @@ class Game:
 
 
     def player_choose(self) -> dict[str, ActionType | AmmoType]:
-        """Prompt the player to pick an action. Re-prompts on invalid input or empty ammo."""
+        """Prompt the player to pick an action. Re-prompts on invalid input."""
         while True:
-            print("\nChoose your action:")
-            print("1. Attack")
-            print("2. Cool Down")
-            print("3. Reload Ammo")
-            print("4. Recharge Shields")
+            console.print("\n[bold]Choose your action:[/bold]")
+            console.print("1. Attack")
+            console.print("2. Cool Down")
+            console.print("3. Reload Ammo")
+            console.print("4. Recharge Shields")
             choice = input(">> ").strip()
 
             if choice == "1":
-                ammo_type = self.pick_ammo()
-                if self.player.has_ammo(ammo_type):
-                    return {"type": ActionType.ATTACK, "ammo": ammo_type}
-                print(f"No {ammo_type.value.replace('_', ' ')} ammo remaining! Choose another action.")
+                #Guard before entering the ammo submenu.
+                #If all ammo types are empty, pick_ammo would show three EMPTY
+                if not self.player.available_ammo_types():
+                    console.print("[red]No ammo remaining! Choose another action.[/red]")
+                    continue
+                ammo_type = self.pick_ammo(context="attack")
+                return {"type": ActionType.ATTACK, "ammo": ammo_type}
 
             elif choice == "2":
                 return {"type": ActionType.COOL_DOWN}
 
             elif choice == "3":
-                ammo_type = self.pick_ammo()
+                ammo_type = self.pick_ammo(context="reload")
                 return {"type": ActionType.RELOAD, "ammo": ammo_type}
             
             elif choice == "4":
                 return {"type": ActionType.RECHARGE_SHIELD}
 
             else:
-                print("Invalid action. Please enter 1, 2, 3, or 4.")
+                console.print("[red]Invalid action. Please enter 1, 2, 3, or 4.[/red]")
             
     def enemy_choose(self) -> dict[str, ActionType | AmmoType]:
         """Determine the enemy's action using priority-based AI."""
@@ -722,18 +727,59 @@ class Game:
             attack=attack,
         )
 
-    def pick_ammo(self) -> AmmoType:
-        """Prompt the player to choose an ammo type. Re-prompts on invalid input."""
+    def pick_ammo(self, context: Literal["attack", "reload"] = "attack") -> AmmoType:
+        """Prompt the player to choose an ammo type with contextual status display.
+        
+        Args:
+            context: Controls how ammo status is presented.
+            "attack" empty ammo dims the option
+            "reload" empty ammo his highlighted as a priority candidate.
+            
+        Returns:
+            The chosen AmmoType.
+        """
+        desc_width = max(len(d) for d in AMMO_DESCRIPTIONS.values())
         while True:
-            print("\nChoose ammo type:")
-            print("1. Standard - Can Critically Hit")
-            print("2. Armor Piercing - Double Damage to Armor")
-            print("3. Shield Breaker - Double Damage to Shields")
+            title = "Choose ammo to reload:" if context == "reload" else "Choose ammo type:"
+            console.print(f"\n[bold]{title}[/bold]")
+
+            for key, ammo_type in AMMO_TYPES.items():
+                count = self.player.ammo.get(ammo_type, 0)
+                max_count = AMMO_MAX[ammo_type]
+                desc = AMMO_DESCRIPTIONS[ammo_type]
+                is_empty = count == 0
+                is_low = 0 < count <= LOW_AMMO_THRESHOLD
+
+                #Determine the status tag based on count and context
+                if is_empty:
+                    if context == "reload":
+                        status = f"[bold yellow]{count}/{max_count} <- Reload[/bold yellow]"
+                    else:
+                        status = "EMPTY"
+                elif is_low:
+                    status = f"[red]{count}/{max_count}  LOW[/red]"
+                else:
+                    status = f"[green]{count}/{max_count}[/green]"
+
+                #Dim the entire line in attack context when ammo is empty
+                if is_empty and context == "attack":
+                    console.print(f"  [dim]{key}. {desc:<{desc_width}}  {status}[/dim]")
+                else:
+                    console.print(f"  {key}. {desc:<{desc_width}}  {status}")
+
             choice = input(">> ").strip()
             ammo = AMMO_TYPES.get(choice)
-            if ammo is not None:
-                return ammo
-            print("Invalid choice. Please enter 1, 2, or 3.")
+
+            if ammo is None:
+                console.print("[red]Invalid choice. Please enter 1, 2, or 3.[/red]")
+                continue
+
+            if context == "attack" and not self.player.has_ammo(ammo):
+                ammo_name = AMMO_DESCRIPTIONS[ammo].split(" - ")[0].strip()
+                console.print(f"[red]{ammo_name} is empty! Choose a different type.[/red]")
+                continue
+
+            return ammo
 
 def main() -> None:
     """Entry point - schow the title screen, create the player, and start the game."""
