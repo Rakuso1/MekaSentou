@@ -19,6 +19,7 @@ from rich.console import Console
 from rich.text import Text
 from rich.table import Table
 from rich import box
+from typing import NamedTuple
 
 console = Console()
 
@@ -110,6 +111,11 @@ class ActionType(Enum):
     COOL_DOWN = "cool_down"
     RELOAD = "reload"
     RECHARGE_SHIELD = "recharge_shield"
+
+class DamageResult(NamedTuple):
+    """The outcome of a single damage calculation."""
+    damage: int
+    is_crit: bool
 
 def clear_screen() -> None:
     os.system('cls' if os.name == 'nt' else 'clear')
@@ -525,27 +531,34 @@ class Game:
     
     def resolve(self, player_action: dict[str, ActionType | AmmoType], enemy_action: dict[str, ActionType | AmmoType]) -> None:
         """Calculate and apply both sides actions simultaneously."""
-        player_damage =  self.calculate_damage(self.player, player_action)
-        enemy_damage = self.calculate_damage(self.enemy, enemy_action)
+        player_result =  self.calculate_damage(self.player, player_action)
+        enemy_result = self.calculate_damage(self.enemy, enemy_action)
 
-        self.apply_action(self.player, self.enemy, player_action, player_damage)
-        self.apply_action(self.enemy, self.player, enemy_action, enemy_damage)
+        self.apply_action(self.player, self.enemy, player_action, player_result)
+        self.apply_action(self.enemy, self.player, enemy_action, enemy_result)
 
-    def calculate_damage(self, attacker: Meka, action: dict[str, ActionType | AmmoType]) -> int:
+    def calculate_damage(self, attacker: Meka, action: dict[str, ActionType | AmmoType]) -> DamageResult:
         """Calculate raw damage for an attack action.
         
         Returns:
-            Damage dealt, including any critical hit multiplier.
-            Returns 0 for non-attack actions.
+            A DamageResult with the damage dealt and whether it was a critical hit.
+            Returns DamageResult(damage=0, is_crit=False) for non-attack actions.
         """
         if action["type"] != ActionType.ATTACK:
-            return 0
+            return DamageResult(damage=0, is_crit=False)
+        
         damage = attacker.attack + random.randint(-DAMAGE_VARIANCE, DAMAGE_VARIANCE)
-        if action["ammo"] == AmmoType.STANDARD and random.random() < STANDARD_CRIT_CHANCE:
+        is_crit = (
+            action["ammo"] == AmmoType.STANDARD
+            and random.random() < STANDARD_CRIT_CHANCE
+        )
+
+        if is_crit:
             damage *= CRIT_DAMAGE_MULTIPLIER
-        return damage
+
+        return DamageResult(damage=damage, is_crit=is_crit)
     
-    def apply_action(self, attacker: Meka, defender: Meka, action: dict[str, ActionType | AmmoType], damage: int) -> None:
+    def apply_action(self,attacker: Meka, defender: Meka, action: dict[str, ActionType | AmmoType], result: DamageResult) -> None:
         """Execute one action and push a styled event into the combat log."""
         msg = Text() #Start with a empty Text; build it up with .append() calls
 
@@ -555,13 +568,17 @@ class Game:
                 msg.append(" is OVERHEATED and couldn't fire!", style="red")
                 self.log(msg)
                 return #Early return: no damage, no ammo consumed, no heat gained
-            defender.take_damage(damage, action["ammo"])
+            defender.take_damage(result.damage, action["ammo"])
             attacker.consume_ammo(action["ammo"])
             attacker.apply_heat()
             ammo_name = action["ammo"].value.replace("_", " ")
+
+            if result.is_crit:
+                msg.append("YOU HIT A VULNERABLE SPOT! \n", style="bold yellow")
+            damage_style = "bold yellow" if result.is_crit else "bold red"
             msg.append(attacker.pilot_name, style="bold")
             msg.append(f" fired {ammo_name} for ")
-            msg.append(str(damage), style="bold red")
+            msg.append(str(result.damage), style=damage_style)
             msg.append(" damage!")
             
         elif action["type"] == ActionType.COOL_DOWN:
