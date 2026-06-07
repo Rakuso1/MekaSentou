@@ -13,6 +13,8 @@ import math
 import json
 from datetime import date
 from dataclasses import dataclass, field
+from collections import deque
+from rich.panel import Panel
 from rich.console import Console
 from rich.text import Text
 from rich.table import Table
@@ -87,6 +89,8 @@ STATUS_BAR_LENGTH: int = 10
 
 # --- Game Settings -------------------------------------------------------
 MAX_LEADERBOARD_SCORES: int = 10
+MAX_LOG_LINES: int = 6
+LOG_BRIGHT_ENTRIES: int = 2 #How many recent entries render at full brightness
 
 LEADERBOARD_FILE = "leaderboard.json"
 
@@ -375,6 +379,7 @@ class Game:
         self.player: Meka = player
         self.enemy: Meka | None = None
         self.wave: int = 1
+        self.combat_log: deque[Text] = deque(maxlen=MAX_LOG_LINES)
 
     def run(self) -> None:
         """Main loop - spawn enemies and advance waves until the player is destroyed"""
@@ -388,6 +393,7 @@ class Game:
                 clear_screen()
                 self.handle_upgrade()
                 time.sleep(3)
+                self.combat_log.clear()
                 clear_screen()
         self.end_game()
 
@@ -397,12 +403,49 @@ class Game:
             clear_screen()
             MekaDisplay.render_status(self.player)
             MekaDisplay.render_status(self.enemy)
+            self.render_combat_log()
             player_action = self.player_choose()
             enemy_action = self.enemy_choose()
-            print("\nResolving actions...")
-            time.sleep(1)
+            console.print("\n[dim]Resolving actions...[/dim]")
             self.resolve(player_action, enemy_action)
-            time.sleep(2)
+            time.sleep(1)
+
+    def log(self, message: Text) -> None:
+        """Append a styled Text entry to the combat log.
+        
+        The deque's maxlen handles trimming automatically -
+        no manual pop() or length check needed.
+        """
+        self.combat_log.append(message)
+
+    def render_combat_log(self) -> None:
+        """Render the combat log inside a Panel, with older entries dimmed"""
+        if not self.combat_log:
+            #Show an empty placeholder so the layout doesn't shift on turn 1
+            content = Text("Awaiting combat", style="dim")
+        else:
+            content = Text()
+            log_list = list(self.combat_log) #Convert deque to list for index access
+            bright_threshold = len(log_list) - LOG_BRIGHT_ENTRIES
+
+            for i, entry in enumerate(log_list):
+                if i > 0:
+                    content.append("\n") #separate entries with newlines
+                is_recent = i >= bright_threshold
+                if is_recent:
+                    content.append_text(entry) #Newest entry: full brightness
+                else:
+                    #older entries: copy first, then dim the copy
+                    dimmed = entry.copy()
+                    dimmed.stylize("dim")
+                    content.append_text(dimmed)
+
+        console.print(Panel(
+            content,
+            title="[bold]Combat Log[/bold]",
+            border_style="dim blue",
+            padding=(0, 1),
+        ))
 
     def handle_upgrade(self) -> None:
         """Manage the full upgrade sequence: display, prompt, upgrade and heal."""
@@ -489,27 +532,41 @@ class Game:
         return damage
     
     def apply_action(self, attacker: Meka, defender: Meka, action: dict[str, ActionType | AmmoType], damage: int) -> None:
-        """Execute one action and print the result to the terminal."""
+        """Execute one action and push a styled event into the combat log."""
+        msg = Text() #Start with a empty Text; build it up with .append() calls
+
         if action["type"] == ActionType.ATTACK:
             if attacker.check_overheat():
-                print(f"{attacker.pilot_name} Meka OVERHEATED and couldn't fire!")
-                return
+                msg.append(attacker.pilot_name, style="bold")
+                msg.append(" is OVERHEATED and couldn't fire!", style="red")
+                self.log(msg)
+                return #Early return: no damage, no ammo consumed, no heat gained
             defender.take_damage(damage, action["ammo"])
             attacker.consume_ammo(action["ammo"])
             attacker.apply_heat()
-            print(f"{attacker.pilot_name} fired {action['ammo'].value.replace('_', ' ')} ammo for {damage} damage!")
-
+            ammo_name = action["ammo"].value.replace("_", " ")
+            msg.append(attacker.pilot_name, style="bold")
+            msg.append(f" fired {ammo_name} for ")
+            msg.append(str(damage), style="bold red")
+            msg.append(" damage!")
+            
         elif action["type"] == ActionType.COOL_DOWN:
             attacker.cool_down()
-            print(f"{attacker.pilot_name} Meka is cooling down!")
+            msg.append(attacker.pilot_name, style="bold")
+            msg.append(" Meka is cooling down!", style="cyan")
 
         elif action["type"] == ActionType.RELOAD:
             attacker.reload_ammo(action["ammo"])
-            print(f"{attacker.pilot_name} Meka reloaded {action['ammo'].value.replace('_', ' ')} ammo!")
+            ammo_name = action["ammo"].value.replace("_", " ")
+            msg.append(attacker.pilot_name, style="bold")
+            msg.append(f" Meka reloaded {ammo_name}.", style="green")
 
         elif action["type"] == ActionType.RECHARGE_SHIELD:
             attacker.recharge_shield()
-            print(f"{attacker.pilot_name} Meka recharged its shields!")
+            msg.append(attacker.pilot_name, style="bold")
+            msg.append(f" Meka recharged its shields!.", style="cyan")
+
+        self.log(msg)
 
     def end_game(self) -> None:
         """Display the game-over screen, save the score, and show the leaderboard."""
