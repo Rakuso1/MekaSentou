@@ -89,7 +89,7 @@ STATUS_BAR_LENGTH: int = 10
 
 # --- Game Settings -------------------------------------------------------
 MAX_LEADERBOARD_SCORES: int = 10
-MAX_LOG_LINES: int = 6
+MAX_LOG_LINES: int = 2
 LOG_BRIGHT_ENTRIES: int = 2 #How many recent entries render at full brightness
 
 LEADERBOARD_FILE = "leaderboard.json"
@@ -114,11 +114,11 @@ class ActionType(Enum):
 def clear_screen() -> None:
     os.system('cls' if os.name == 'nt' else 'clear')
 
-class MekaDisplay:
-    """Handles all terminal rendering for Meka objects
+class Display:
+    """Handles all terminal rendering for the game,
     
-    Keeps display logic fully separated from game logic,
-    following the single responsibility principle.
+    All methods are static, this class oens no state.
+    It receives data as parameters and renders it.
     """
     @staticmethod
     def make_bar(value: int, max_value: int, invert_color: bool = False) -> Text:
@@ -160,7 +160,7 @@ class MekaDisplay:
         table.add_column("Numbers", justify="left", style="dim")
 
         # Add rows for the core stats
-        table.add_row("Power:", MekaDisplay.make_bar(meka.power, meka.max_power), f"{meka.power}/{meka.max_power}")
+        table.add_row("Power:", Display.make_bar(meka.power, meka.max_power), f"{meka.power}/{meka.max_power}")
 
         # Heat row - uses invert_color and conditional warning label
         heat_numbers = Text(f"{meka.heat}/{MAX_HEAT}")
@@ -170,10 +170,14 @@ class MekaDisplay:
             heat_numbers.append("  CRITICAL", style="bold red")
         elif meka.heat >= MAX_HEAT * 0.5:
             heat_numbers.append("  WARNING", style="yellow")
+        table.add_row("Heat:", Display.make_bar(meka.heat, MAX_HEAT, invert_color=True), heat_numbers)
 
-        table.add_row("Heat:", MekaDisplay.make_bar(meka.heat, MAX_HEAT, invert_color=True), heat_numbers)
-        table.add_row("Armor:", MekaDisplay.make_bar(meka.armor, meka.max_armor), f"{meka.armor}/{meka.max_armor}")
-        table.add_row("Shield:", MekaDisplay.make_bar(meka.shield, meka.max_shield), f"{meka.shield}/{meka.max_shield}")
+        table.add_row("Armor:", Display.make_bar(meka.armor, meka.max_armor), f"{meka.armor}/{meka.max_armor}")
+
+        shield_numbers = Text(f"{meka.shield}/{meka.max_shield}")
+        if meka.shield == 0:
+            shield_numbers.append(" SHIELDS OFFLINE", style="bold red")
+        table.add_row("Shield:", Display.make_bar(meka.shield, meka.max_shield), shield_numbers)
         
         # Add a blank row or separator for ammo
         table.add_row("", "", "") 
@@ -187,20 +191,57 @@ class MekaDisplay:
         std_ammo_numbers = Text(f"{std_ammo}/{MAX_STANDARD_AMMO}")
         if std_ammo <= MAX_STANDARD_AMMO * 0.2:
             std_ammo_numbers.append(" LOW AMMO", style= "bold red")
-        table.add_row("Standard:", MekaDisplay.make_bar(std_ammo, MAX_STANDARD_AMMO), std_ammo_numbers)
+        table.add_row("Standard:", Display.make_bar(std_ammo, MAX_STANDARD_AMMO), std_ammo_numbers)
 
         ap_ammo_numbers = Text(f"{ap_ammo}/{MAX_SPECIAL_AMMO}")
         if ap_ammo <= MAX_SPECIAL_AMMO * 0.2:
             std_ammo_numbers.append(" LOW AMMO", style= "bold red")
-        table.add_row("Armor Piercing:", MekaDisplay.make_bar(ap_ammo, MAX_SPECIAL_AMMO), ap_ammo_numbers)
+        table.add_row("Armor Piercing:", Display.make_bar(ap_ammo, MAX_SPECIAL_AMMO), ap_ammo_numbers)
 
         sb_ammo_numbers = Text(f"{sb_ammo}/{MAX_SPECIAL_AMMO}")
         if sb_ammo <= MAX_SPECIAL_AMMO * 0.2:
             sb_ammo_numbers.append(" LOW AMMO", style= "bold red")
-        table.add_row("Shield Breaker:", MekaDisplay.make_bar(sb_ammo, MAX_SPECIAL_AMMO), sb_ammo_numbers)
+        table.add_row("Shield Breaker:", Display.make_bar(sb_ammo, MAX_SPECIAL_AMMO), sb_ammo_numbers)
 
         # Print the finished table to the console
         console.print(table)
+
+    @staticmethod
+    def render_combat_log(log: deque[Text]) -> None:
+        """Render the combat log inside a Panel, with older entries dimmed
+        
+        Accepts the log as a parameter
+        
+        Args:
+            log: The deque of Text entries owned by Game
+        """
+        if not log:
+            #Show an empty placeholder so the layout doesn't shift on turn 1
+            content = Text("Awaiting combat", style="dim")
+        else:
+            content = Text()
+            log_list = list(log) #Convert deque to list for index access
+            bright_threshold = len(log_list) - LOG_BRIGHT_ENTRIES
+
+            for i, entry in enumerate(log_list):
+                if i > 0:
+                    content.append("\n") #separate entries with newlines
+                is_recent = i >= bright_threshold
+                if is_recent:
+                    content.append_text(entry) #Newest entry: full brightness
+                else:
+                    #older entries: copy first, then dim the copy
+                    dimmed = entry.copy()
+                    dimmed.stylize("dim")
+                    content.append_text(dimmed)
+
+        console.print(Panel(
+            content,
+            title="[bold]Combat Log[/bold]",
+            border_style="dim blue",
+            padding=(0, 1),
+            expand=False,
+        ))
 
 @dataclass
 class Meka:
@@ -385,11 +426,13 @@ class Game:
         """Main loop - spawn enemies and advance waves until the player is destroyed"""
         while self.player.is_alive():
             self.enemy = self.generate_enemy(self.wave)
-            print(f"\n{self.enemy.pilot_name} approaches! Prepare for battle!")
+            console.print(f"\n[bold magenta]{self.enemy.pilot_name}[/bold magenta] approaches! Prepare for battle!")
             time.sleep(2)
             self.battle_loop()
             if self.player.is_alive():
                 self.wave += 1
+                console.print(f"You destroyed [bold magenta]{self.enemy.pilot_name}[/bold magenta] Meka!")
+                time.sleep(2)
                 clear_screen()
                 self.handle_upgrade()
                 time.sleep(3)
@@ -401,14 +444,13 @@ class Game:
         """Run one complete battle until either Meka's power reaches zero."""
         while self.player.is_alive() and self.enemy.is_alive():
             clear_screen()
-            MekaDisplay.render_status(self.player)
-            MekaDisplay.render_status(self.enemy)
-            self.render_combat_log()
+            Display.render_status(self.player)
+            Display.render_status(self.enemy)
             player_action = self.player_choose()
             enemy_action = self.enemy_choose()
-            console.print("\n[dim]Resolving actions...[/dim]")
             self.resolve(player_action, enemy_action)
-            time.sleep(1)
+            Display.render_combat_log(self.combat_log)
+            input()
 
     def log(self, message: Text) -> None:
         """Append a styled Text entry to the combat log.
@@ -418,39 +460,11 @@ class Game:
         """
         self.combat_log.append(message)
 
-    def render_combat_log(self) -> None:
-        """Render the combat log inside a Panel, with older entries dimmed"""
-        if not self.combat_log:
-            #Show an empty placeholder so the layout doesn't shift on turn 1
-            content = Text("Awaiting combat", style="dim")
-        else:
-            content = Text()
-            log_list = list(self.combat_log) #Convert deque to list for index access
-            bright_threshold = len(log_list) - LOG_BRIGHT_ENTRIES
-
-            for i, entry in enumerate(log_list):
-                if i > 0:
-                    content.append("\n") #separate entries with newlines
-                is_recent = i >= bright_threshold
-                if is_recent:
-                    content.append_text(entry) #Newest entry: full brightness
-                else:
-                    #older entries: copy first, then dim the copy
-                    dimmed = entry.copy()
-                    dimmed.stylize("dim")
-                    content.append_text(dimmed)
-
-        console.print(Panel(
-            content,
-            title="[bold]Combat Log[/bold]",
-            border_style="dim blue",
-            padding=(0, 1),
-        ))
 
     def handle_upgrade(self) -> None:
         """Manage the full upgrade sequence: display, prompt, upgrade and heal."""
-        MekaDisplay.render_status(self.player)
-        print(f"\nLevel Up!. Choose your upgrade:")
+        Display.render_status(self.player)
+        console.print(f"\nChoose your upgrade:")
         print(f"1. Increase Max Power (+{LEVEL_UP_POWER_BONUS})")
         print(f"2. Increase Armor (+{LEVEL_UP_ARMOR_BONUS})")
         print(f"3. Increase Shield (+{LEVEL_UP_SHIELD_BONUS})")
@@ -559,12 +573,12 @@ class Game:
             attacker.reload_ammo(action["ammo"])
             ammo_name = action["ammo"].value.replace("_", " ")
             msg.append(attacker.pilot_name, style="bold")
-            msg.append(f" Meka reloaded {ammo_name}.", style="green")
+            msg.append(f" Meka reloaded {ammo_name} ammo!", style="green")
 
         elif action["type"] == ActionType.RECHARGE_SHIELD:
             attacker.recharge_shield()
             msg.append(attacker.pilot_name, style="bold")
-            msg.append(f" Meka recharged its shields!.", style="cyan")
+            msg.append(f" Meka recharged its shields!", style="cyan")
 
         self.log(msg)
 
@@ -573,7 +587,7 @@ class Game:
         clear_screen()
         print(f"Game Over! You Survived {self.wave} waves.")
         print("\nFinal Stats")
-        MekaDisplay.render_status(self.player)
+        Display.render_status(self.player)
         scores = self.save_score()
         self.show_leaderboard(scores)
         input("\nPress Enter to exit...")
