@@ -251,6 +251,61 @@ class Display:
             expand=False,
         ))
 
+    @staticmethod
+    def show_leaderboard(scores: list[dict[str, str | int]], current_name: str, current_waves: int,) -> None:
+        """Render the leaderboard as a styled Table inside a Panel.
+        
+        Args:
+            scores: Sorted score list from the leaderboard file.
+            current_name: Current player's pilot name
+            current_waves: Waves survives this run
+        """
+        medals: dict[int, str] = {1: "1st", 2: "2nd", 3: "3rd"}
+
+        if not scores:
+            console.print(Panel(
+                "[dim] No scores yet. Be the first![/dim]",
+                title="LEADERBOARD",
+            ))
+            return
+        
+        table = Table(
+            show_header=True,
+            header_style="bold cyan",
+            box=box.SIMPLE_HEAD,
+            padding=(0, 1),
+        )
+
+        table.add_column("#", justify="center", width=4)
+        table.add_column("Pilot", justify="left", min_width=20)
+        table.add_column("Waves", justify="right", width=6)
+        table.add_column("Date", justify="right", width=12)
+
+        for i, entry in enumerate(scores, 1):
+            is_current = (
+                entry["name"] == current_name
+                and entry["waves"] == current_waves
+            )
+            rank = medals.get(i, str(i))
+            name_cell = str(entry["name"])
+            waves_cell = str(entry["waves"])
+            date_cell = str(entry["date"])
+
+            if is_current:
+                name_cell = f"[bold yellow]{name_cell}[/bold yellow]"
+                waves_cell = f"[bold yellow]{waves_cell}[/bold yellow]"
+                date_cell = f"[bold yellow]{date_cell}[/bold yellow]"
+                rank = f"[bold yellow]{rank}[/bold yellow]"
+
+            table.add_row(rank, name_cell, waves_cell, date_cell)
+
+        console.print(Panel(
+            table,
+            title="LEADERBOARD",
+            padding=(0, 1),
+            expand=False,
+        ))
+
 @dataclass
 class Meka:
     """A combat Meka unit with layered defences: shield -> armor -> power.
@@ -443,7 +498,7 @@ class Game:
                 time.sleep(2)
                 clear_screen()
                 self.handle_upgrade()
-                time.sleep(3)
+                time.sleep(2)
                 self.combat_log.clear()
                 clear_screen()
         self.end_game()
@@ -607,11 +662,11 @@ class Game:
     def end_game(self) -> None:
         """Display the game-over screen, save the score, and show the leaderboard."""
         clear_screen()
-        print(f"Game Over! You Survived {self.wave} waves.")
-        print("\nFinal Stats")
-        Display.render_status(self.player)
+
+        wave_word = "wave" if self.wave == 1 else "waves"
+        console.print(f"[bold red] GAME OVER[/bold red] You survived [bold]{self.wave} {wave_word}[/bold]\n",)
         scores = self.save_score()
-        self.show_leaderboard(scores)
+        Display.show_leaderboard(scores, self.player.pilot_name, self.wave)
         input("\nPress Enter to exit...")
 
     def save_score(self) -> None:
@@ -645,17 +700,6 @@ class Game:
             print(f"Warning: Error loading leaderboard: {e}")
             return []
         
-    def show_leaderboard(self, scores: list[dict[str, str | int]]) -> None:
-        """Print the leaderboard, highlighting the player's current run."""
-        print("\n========================")
-        print("      LEADERBOARD")
-        print("========================")
-        if not scores:
-            print("No scores yet. Be the first to set a record!")
-            return
-        for i, entry in enumerate(scores, 1):
-            arrow = "->" if entry["name"] == self.player.pilot_name and entry["waves"] == self.wave else "  "
-            print(f"{arrow} {i}. {entry['name']:<20} {entry['waves']}  waves       {entry['date']}")
 
     def enemy_pick_ammo(self) -> AmmoType | None:
         """Choose the best ammo type based on the player's current defences.
@@ -783,16 +827,17 @@ class Game:
 
 def main() -> None:
     """Entry point - schow the title screen, create the player, and start the game."""
-    print("========================")
-    print("      メカ戦闘")
-    print("========================")
+    console.print(Panel(
+        "[bold cyan]メカ戦闘[/bold cyan]",
+        border_style="cyan",
+        padding=(1,4),
+        expand=False,
+    ))
 
     pilot_name = input("Enter your name, Pilot: ").strip()
     if not pilot_name:
         pilot_name = "Unknown Pilot"
 
-    input("\nPress Enter to battle...")
-    
     player = Meka(
         pilot_name=pilot_name,
         power=PLAYER_START_POWER,
