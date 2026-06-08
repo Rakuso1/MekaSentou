@@ -489,7 +489,11 @@ class Game:
         """Main loop - spawn enemies and advance waves until the player is destroyed"""
         while self.player.is_alive():
             self.enemy = self.generate_enemy(self.wave)
-            console.print(f"\n[bold magenta]{self.enemy.pilot_name}[/bold magenta] approaches! Prepare for battle!")
+            console.print(Panel(
+                f"[bold red]{self.enemy.pilot_name}[/bold red] approaches! Prepare for battle!",
+                border_style="red",
+                expand=False
+            ))
             time.sleep(2)
             self.battle_loop()
             if self.player.is_alive():
@@ -527,22 +531,22 @@ class Game:
     def handle_upgrade(self) -> None:
         """Manage the full upgrade sequence: display, prompt, upgrade and heal."""
         Display.render_status(self.player)
-        console.print(f"\nChoose your upgrade:")
-        print(f"1. Increase Max Power (+{LEVEL_UP_POWER_BONUS})")
-        print(f"2. Increase Armor (+{LEVEL_UP_ARMOR_BONUS})")
-        print(f"3. Increase Shield (+{LEVEL_UP_SHIELD_BONUS})")
-        print(f"4. Increase Attack (+{LEVEL_UP_ATTACK_BONUS})")
+        console.print(f"\n[bold]Choose your upgrade:[/bold]")
+        console.print(f"1. Increase Max Power ([green]+{LEVEL_UP_POWER_BONUS}[/green])")
+        console.print(f"2. Increase Armor     ([green]+{LEVEL_UP_ARMOR_BONUS}[/green])")
+        console.print(f"3. Increase Shield    ([green]+{LEVEL_UP_SHIELD_BONUS}[/green])")
+        console.print(f"4. Increase Attack    ([green]+{LEVEL_UP_ATTACK_BONUS}[/green])")
 
         while True:
             choice = input(">> ").strip()
             if choice in ("1", "2", "3", "4"):
                 break
-            print("Invalid choice. Please enter 1, 2, 3, or 4.")
+            console.print("[red]Invalid choice. Please enter 1, 2, 3, or 4.[/red]")
 
         message = self.player.apply_upgrade(choice)
-        print(message)
+        console.print(f"[green]{message}[/green]")
         healed = self.player.apply_post_battle_heal()
-        print(f"Emergency repairs complete! Power restored by {healed} points.")
+        console.print(f"[cyan]Emergency repairs complete! Power restored by {healed} points.[/cyan]")
 
 
     def player_choose(self) -> dict[str, ActionType | AmmoType]:
@@ -828,9 +832,9 @@ class Game:
 def main() -> None:
     """Entry point - schow the title screen, create the player, and start the game."""
     console.print(Panel(
-        "[bold cyan]メカ戦闘[/bold cyan]",
-        border_style="cyan",
-        padding=(1,4),
+        "[bold magenta]メカ戦闘[/bold magenta]",
+        border_style="magenta",
+        padding=(1,6),
         expand=False,
     ))
 
