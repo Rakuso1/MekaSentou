@@ -13,6 +13,15 @@ import math
 import json
 from datetime import date
 from dataclasses import dataclass, field
+from collections import deque
+from rich.panel import Panel
+from rich.console import Console
+from rich.text import Text
+from rich.table import Table
+from rich import box
+from typing import NamedTuple, Literal
+
+console = Console()
 
 # --- Combat --------------------------------------------------------------
 STANDARD_CRIT_CHANCE: float = 0.25 # 25% chance for standard ammo to critically hit
@@ -29,6 +38,7 @@ MAX_STANDARD_AMMO: int = 10
 MAX_SPECIAL_AMMO: int = 10
 STANDARD_AMMO_RELOAD_AMOUNT: int = 10
 SPECIAL_AMMO_RELOAD_AMOUNT: int = 5
+LOW_AMMO_THRESHOLD: int = 2
 
 # --- Shield Recharge -----------------------------------------------------
 SHIELD_RECHARGE_COST_RATE: float = 0.2 # 20% of current power
@@ -81,6 +91,8 @@ STATUS_BAR_LENGTH: int = 10
 
 # --- Game Settings -------------------------------------------------------
 MAX_LEADERBOARD_SCORES: int = 10
+MAX_LOG_LINES: int = 2
+LOG_BRIGHT_ENTRIES: int = 2 #How many recent entries render at full brightness
 
 LEADERBOARD_FILE = "leaderboard.json"
 
@@ -95,49 +107,204 @@ AMMO_TYPES: dict[str, AmmoType] = {
     "3": AmmoType.SHIELD_BREAKER,
 }
 
+AMMO_DESCRIPTIONS: dict[AmmoType, str] = {
+    AmmoType.STANDARD:       "Standard       - Can Critically Hit",
+    AmmoType.ARMOR_PIERCING: "Armor Piercing - Double Damage to Armor",
+    AmmoType.SHIELD_BREAKER: "Shield Breaker - Double Damage to Shields",
+}
+
+AMMO_MAX: dict[AmmoType, int] = {
+    AmmoType.STANDARD: MAX_STANDARD_AMMO,
+    AmmoType.ARMOR_PIERCING: MAX_SPECIAL_AMMO,
+    AmmoType.SHIELD_BREAKER: MAX_SPECIAL_AMMO
+}
+
 class ActionType(Enum):
     ATTACK = "attack"
     COOL_DOWN = "cool_down"
     RELOAD = "reload"
     RECHARGE_SHIELD = "recharge_shield"
 
+class DamageResult(NamedTuple):
+    """The outcome of a single damage calculation."""
+    damage: int
+    is_crit: bool
+
 def clear_screen() -> None:
     os.system('cls' if os.name == 'nt' else 'clear')
 
-class MekaDisplay:
-    """Handles all terminal rendering for Meka objects
+class Display:
+    """Handles all terminal rendering for the game,
     
-    Keeps display logic fully separated from game logic,
-    following the single responsibility principle.
+    All methods are static, this class oens no state.
+    It receives data as parameters and renders it.
     """
     @staticmethod
-    def make_bar(value: int, max_value: int) -> str:
-        """Build a fixed-width ACCII progess bar.
+    def make_bar(value: int, max_value: int, invert_color: bool = False) -> Text:
+        """Build a fixed-width ASCII progress bar.
         
         Args:
-            value: The current value to represent
+            value: The current value to represent.
             max_value: The maximum posibble value (full bar).
+            invert_color: True on heat bar.
             
         Returns:
-            A string of STATUS_BAR_LENGHT characters using █ and -. 
+            A rich Text class. 
         """
         filled = int((value / max_value) * STATUS_BAR_LENGTH) if max_value else 0
         filled = max(0, min(STATUS_BAR_LENGTH, filled))
         empty = STATUS_BAR_LENGTH - filled
-        return "█" * filled + "-" * empty
+
+        ratio = (value / max_value) if max_value else 0.0
+        if invert_color:
+            ratio = 1.0 - ratio
+
+        color = "green" if ratio > 0.5 else "yellow" if ratio > 0.25 else "red"
+
+        bar = Text()
+        bar.append("◼" * filled, style=color)
+        bar.append("-" * empty, style="dim")
+        return bar
     
     @staticmethod
     def render_status(meka: "Meka") -> None:
-        """Print a full status readout for a Meka to the terminal."""
-        print(f"\n{meka.pilot_name}")
-        print(f"Power:  [{MekaDisplay.make_bar(meka.power, meka.max_power)}] {meka.power}/{meka.max_power}")
-        print(f"Heat:   [{MekaDisplay.make_bar(meka.heat, MAX_HEAT)}] {meka.heat}/{MAX_HEAT}")
-        print(f"Armor:  [{MekaDisplay.make_bar(meka.armor, meka.max_armor)}] {meka.armor}/{meka.max_armor}")
-        print(f"Shield: [{MekaDisplay.make_bar(meka.shield, meka.max_shield)}] {meka.shield}/{meka.max_shield}")
-        print(f"Ammo:   {meka.ammo_total()}")
-        print(f"  Standard:        [{MekaDisplay.make_bar(meka.ammo.get(AmmoType.STANDARD, 0), MAX_STANDARD_AMMO)}] {meka.ammo.get(AmmoType.STANDARD, 0)}/{MAX_STANDARD_AMMO}")
-        print(f"  Armor Piercing:   [{MekaDisplay.make_bar(meka.ammo.get(AmmoType.ARMOR_PIERCING, 0), MAX_SPECIAL_AMMO)}] {meka.ammo.get(AmmoType.ARMOR_PIERCING, 0)}/{MAX_SPECIAL_AMMO}")
-        print(f"  Shield Breaker:   [{MekaDisplay.make_bar(meka.ammo.get(AmmoType.SHIELD_BREAKER, 0), MAX_SPECIAL_AMMO)}] {meka.ammo.get(AmmoType.SHIELD_BREAKER, 0)}/{MAX_SPECIAL_AMMO}")
+        """Print a status dashboard with heat warnings."""
+        console.print(f"\n[bold magenta]{meka.pilot_name}[/bold magenta]\n")
+        
+        table = Table(show_header=False, show_edge=False, box=box.SIMPLE)
+        
+        # Define our columns (System Name, Bar, Text Stats)
+        table.add_column("System", justify="right", style="bold cyan")
+        table.add_column("Bar", justify="left")
+        table.add_column("Numbers", justify="left", style="dim")
+
+        # Add rows for the core stats
+        table.add_row("Power:", Display.make_bar(meka.power, meka.max_power), f"{meka.power}/{meka.max_power}")
+
+        # Heat row - uses invert_color and conditional warning label
+        heat_numbers = Text(f"{meka.heat}/{MAX_HEAT}")
+        if meka.heat >= MAX_HEAT:
+            heat_numbers.append("  OVERHEATED", style="bold red")
+        elif meka.heat >= MAX_HEAT * 0.8:
+            heat_numbers.append("  CRITICAL", style="bold red")
+        elif meka.heat >= MAX_HEAT * 0.5:
+            heat_numbers.append("  WARNING", style="yellow")
+        table.add_row("Heat:", Display.make_bar(meka.heat, MAX_HEAT, invert_color=True), heat_numbers)
+
+        table.add_row("Armor:", Display.make_bar(meka.armor, meka.max_armor), f"{meka.armor}/{meka.max_armor}")
+
+        shield_numbers = Text(f"{meka.shield}/{meka.max_shield}")
+        if meka.shield == 0:
+            shield_numbers.append(" SHIELDS OFFLINE", style="bold red")
+        table.add_row("Shield:", Display.make_bar(meka.shield, meka.max_shield), shield_numbers)
+        
+        # Add a blank row or separator for ammo
+        table.add_row("", "", "") 
+        table.add_row(f"Ammo ({meka.ammo_total()})", "", "")
+        
+        # Add rows for Ammo Subtypes
+        std_ammo = meka.ammo.get(AmmoType.STANDARD, 0)
+        ap_ammo = meka.ammo.get(AmmoType.ARMOR_PIERCING, 0)
+        sb_ammo = meka.ammo.get(AmmoType.SHIELD_BREAKER, 0)
+
+        table.add_row("Standard:", Display.make_bar(std_ammo, MAX_STANDARD_AMMO), f"{std_ammo}/{MAX_STANDARD_AMMO}")
+        table.add_row("Armor Piercing:", Display.make_bar(ap_ammo, MAX_SPECIAL_AMMO), f"{ap_ammo}/{MAX_SPECIAL_AMMO}")
+        table.add_row("Shield Breaker:", Display.make_bar(sb_ammo, MAX_SPECIAL_AMMO), f"{sb_ammo}/{MAX_SPECIAL_AMMO}")
+
+        # Print the finished table to the console
+        console.print(table)
+
+    @staticmethod
+    def render_combat_log(log: deque[Text]) -> None:
+        """Render the combat log inside a Panel, with older entries dimmed
+        
+        Accepts the log as a parameter
+        
+        Args:
+            log: The deque of Text entries owned by Game
+        """
+        if not log:
+            #Show an empty placeholder so the layout doesn't shift on turn 1
+            content = Text("Awaiting combat", style="dim")
+        else:
+            content = Text()
+            log_list = list(log) #Convert deque to list for index access
+            bright_threshold = len(log_list) - LOG_BRIGHT_ENTRIES
+
+            for i, entry in enumerate(log_list):
+                if i > 0:
+                    content.append("\n") #separate entries with newlines
+                is_recent = i >= bright_threshold
+                if is_recent:
+                    content.append_text(entry) #Newest entry: full brightness
+                else:
+                    #older entries: copy first, then dim the copy
+                    dimmed = entry.copy()
+                    dimmed.stylize("dim")
+                    content.append_text(dimmed)
+
+        console.print(Panel(
+            content,
+            title="[bold]Combat Log[/bold]",
+            border_style="dim blue",
+            padding=(0, 1),
+            expand=False,
+        ))
+
+    @staticmethod
+    def show_leaderboard(scores: list[dict[str, str | int]], current_name: str, current_waves: int,) -> None:
+        """Render the leaderboard as a styled Table inside a Panel.
+        
+        Args:
+            scores: Sorted score list from the leaderboard file.
+            current_name: Current player's pilot name
+            current_waves: Waves survives this run
+        """
+        medals: dict[int, str] = {1: "1st", 2: "2nd", 3: "3rd"}
+
+        if not scores:
+            console.print(Panel(
+                "[dim] No scores yet. Be the first![/dim]",
+                title="LEADERBOARD",
+            ))
+            return
+        
+        table = Table(
+            show_header=True,
+            header_style="bold cyan",
+            box=box.SIMPLE_HEAD,
+            padding=(0, 1),
+        )
+
+        table.add_column("#", justify="center", width=4)
+        table.add_column("Pilot", justify="left", min_width=20)
+        table.add_column("Waves", justify="right", width=6)
+        table.add_column("Date", justify="right", width=12)
+
+        for i, entry in enumerate(scores, 1):
+            is_current = (
+                entry["name"] == current_name
+                and entry["waves"] == current_waves
+            )
+            rank = medals.get(i, str(i))
+            name_cell = str(entry["name"])
+            waves_cell = str(entry["waves"])
+            date_cell = str(entry["date"])
+
+            if is_current:
+                name_cell = f"[bold yellow]{name_cell}[/bold yellow]"
+                waves_cell = f"[bold yellow]{waves_cell}[/bold yellow]"
+                date_cell = f"[bold yellow]{date_cell}[/bold yellow]"
+                rank = f"[bold yellow]{rank}[/bold yellow]"
+
+            table.add_row(rank, name_cell, waves_cell, date_cell)
+
+        console.print(Panel(
+            table,
+            title="LEADERBOARD",
+            padding=(0, 1),
+            expand=False,
+        ))
 
 @dataclass
 class Meka:
@@ -316,19 +483,27 @@ class Game:
         self.player: Meka = player
         self.enemy: Meka | None = None
         self.wave: int = 1
+        self.combat_log: deque[Text] = deque(maxlen=MAX_LOG_LINES)
 
     def run(self) -> None:
         """Main loop - spawn enemies and advance waves until the player is destroyed"""
         while self.player.is_alive():
             self.enemy = self.generate_enemy(self.wave)
-            print(f"\n{self.enemy.pilot_name} approaches! Prepare for battle!")
+            console.print(Panel(
+                f"[bold red]{self.enemy.pilot_name}[/bold red] approaches! Prepare for battle!",
+                border_style="red",
+                expand=False
+            ))
             time.sleep(2)
             self.battle_loop()
             if self.player.is_alive():
                 self.wave += 1
+                console.print(f"You destroyed [bold magenta]{self.enemy.pilot_name}[/bold magenta] Meka!")
+                time.sleep(2)
                 clear_screen()
                 self.handle_upgrade()
-                time.sleep(3)
+                time.sleep(2)
+                self.combat_log.clear()
                 clear_screen()
         self.end_game()
 
@@ -336,64 +511,75 @@ class Game:
         """Run one complete battle until either Meka's power reaches zero."""
         while self.player.is_alive() and self.enemy.is_alive():
             clear_screen()
-            MekaDisplay.render_status(self.player)
-            MekaDisplay.render_status(self.enemy)
+            Display.render_status(self.player)
+            Display.render_status(self.enemy)
             player_action = self.player_choose()
             enemy_action = self.enemy_choose()
-            print("\nResolving actions...")
-            time.sleep(1)
             self.resolve(player_action, enemy_action)
-            time.sleep(2)
+            Display.render_combat_log(self.combat_log)
+            input()
+
+    def log(self, message: Text) -> None:
+        """Append a styled Text entry to the combat log.
+        
+        The deque's maxlen handles trimming automatically -
+        no manual pop() or length check needed.
+        """
+        self.combat_log.append(message)
+
 
     def handle_upgrade(self) -> None:
         """Manage the full upgrade sequence: display, prompt, upgrade and heal."""
-        MekaDisplay.render_status(self.player)
-        print(f"\nLevel Up!. Choose your upgrade:")
-        print(f"1. Increase Max Power (+{LEVEL_UP_POWER_BONUS})")
-        print(f"2. Increase Armor (+{LEVEL_UP_ARMOR_BONUS})")
-        print(f"3. Increase Shield (+{LEVEL_UP_SHIELD_BONUS})")
-        print(f"4. Increase Attack (+{LEVEL_UP_ATTACK_BONUS})")
+        Display.render_status(self.player)
+        console.print(f"\n[bold]Choose your upgrade:[/bold]")
+        console.print(f"1. Increase Max Power ([green]+{LEVEL_UP_POWER_BONUS}[/green])")
+        console.print(f"2. Increase Armor     ([green]+{LEVEL_UP_ARMOR_BONUS}[/green])")
+        console.print(f"3. Increase Shield    ([green]+{LEVEL_UP_SHIELD_BONUS}[/green])")
+        console.print(f"4. Increase Attack    ([green]+{LEVEL_UP_ATTACK_BONUS}[/green])")
 
         while True:
             choice = input(">> ").strip()
             if choice in ("1", "2", "3", "4"):
                 break
-            print("Invalid choice. Please enter 1, 2, 3, or 4.")
+            console.print("[red]Invalid choice. Please enter 1, 2, 3, or 4.[/red]")
 
         message = self.player.apply_upgrade(choice)
-        print(message)
+        console.print(f"[green]{message}[/green]")
         healed = self.player.apply_post_battle_heal()
-        print(f"Emergency repairs complete! Power restored by {healed} points.")
+        console.print(f"[cyan]Emergency repairs complete! Power restored by {healed} points.[/cyan]")
 
 
     def player_choose(self) -> dict[str, ActionType | AmmoType]:
-        """Prompt the player to pick an action. Re-prompts on invalid input or empty ammo."""
+        """Prompt the player to pick an action. Re-prompts on invalid input."""
         while True:
-            print("\nChoose your action:")
-            print("1. Attack")
-            print("2. Cool Down")
-            print("3. Reload Ammo")
-            print("4. Recharge Shields")
+            console.print("\n[bold]Choose your action:[/bold]")
+            console.print("1. Attack")
+            console.print("2. Cool Down")
+            console.print("3. Reload Ammo")
+            console.print("4. Recharge Shields")
             choice = input(">> ").strip()
 
             if choice == "1":
-                ammo_type = self.pick_ammo()
-                if self.player.has_ammo(ammo_type):
-                    return {"type": ActionType.ATTACK, "ammo": ammo_type}
-                print(f"No {ammo_type.value.replace('_', ' ')} ammo remaining! Choose another action.")
+                #Guard before entering the ammo submenu.
+                #If all ammo types are empty, pick_ammo would show three EMPTY
+                if not self.player.available_ammo_types():
+                    console.print("[red]No ammo remaining! Choose another action.[/red]")
+                    continue
+                ammo_type = self.pick_ammo(context="attack")
+                return {"type": ActionType.ATTACK, "ammo": ammo_type}
 
             elif choice == "2":
                 return {"type": ActionType.COOL_DOWN}
 
             elif choice == "3":
-                ammo_type = self.pick_ammo()
+                ammo_type = self.pick_ammo(context="reload")
                 return {"type": ActionType.RELOAD, "ammo": ammo_type}
             
             elif choice == "4":
                 return {"type": ActionType.RECHARGE_SHIELD}
 
             else:
-                print("Invalid action. Please enter 1, 2, 3, or 4.")
+                console.print("[red]Invalid action. Please enter 1, 2, 3, or 4.[/red]")
             
     def enemy_choose(self) -> dict[str, ActionType | AmmoType]:
         """Determine the enemy's action using priority-based AI."""
@@ -409,57 +595,82 @@ class Game:
     
     def resolve(self, player_action: dict[str, ActionType | AmmoType], enemy_action: dict[str, ActionType | AmmoType]) -> None:
         """Calculate and apply both sides actions simultaneously."""
-        player_damage =  self.calculate_damage(self.player, player_action)
-        enemy_damage = self.calculate_damage(self.enemy, enemy_action)
+        player_result =  self.calculate_damage(self.player, player_action)
+        enemy_result = self.calculate_damage(self.enemy, enemy_action)
 
-        self.apply_action(self.player, self.enemy, player_action, player_damage)
-        self.apply_action(self.enemy, self.player, enemy_action, enemy_damage)
+        self.apply_action(self.player, self.enemy, player_action, player_result)
+        self.apply_action(self.enemy, self.player, enemy_action, enemy_result)
 
-    def calculate_damage(self, attacker: Meka, action: dict[str, ActionType | AmmoType]) -> int:
+    def calculate_damage(self, attacker: Meka, action: dict[str, ActionType | AmmoType]) -> DamageResult:
         """Calculate raw damage for an attack action.
         
         Returns:
-            Damage dealt, including any critical hit multiplier.
-            Returns 0 for non-attack actions.
+            A DamageResult with the damage dealt and whether it was a critical hit.
+            Returns DamageResult(damage=0, is_crit=False) for non-attack actions.
         """
         if action["type"] != ActionType.ATTACK:
-            return 0
+            return DamageResult(damage=0, is_crit=False)
+        
         damage = attacker.attack + random.randint(-DAMAGE_VARIANCE, DAMAGE_VARIANCE)
-        if action["ammo"] == AmmoType.STANDARD and random.random() < STANDARD_CRIT_CHANCE:
+        is_crit = (
+            action["ammo"] == AmmoType.STANDARD
+            and random.random() < STANDARD_CRIT_CHANCE
+        )
+
+        if is_crit:
             damage *= CRIT_DAMAGE_MULTIPLIER
-        return damage
+
+        return DamageResult(damage=damage, is_crit=is_crit)
     
-    def apply_action(self, attacker: Meka, defender: Meka, action: dict[str, ActionType | AmmoType], damage: int) -> None:
-        """Execute one action and print the result to the terminal."""
+    def apply_action(self,attacker: Meka, defender: Meka, action: dict[str, ActionType | AmmoType], result: DamageResult) -> None:
+        """Execute one action and push a styled event into the combat log."""
+        msg = Text() #Start with a empty Text; build it up with .append() calls
+
         if action["type"] == ActionType.ATTACK:
             if attacker.check_overheat():
-                print(f"{attacker.pilot_name} Meka OVERHEATED and couldn't fire!")
-                return
-            defender.take_damage(damage, action["ammo"])
+                msg.append(attacker.pilot_name, style="bold")
+                msg.append(" is OVERHEATED and couldn't fire!", style="red")
+                self.log(msg)
+                return #Early return: no damage, no ammo consumed, no heat gained
+            defender.take_damage(result.damage, action["ammo"])
             attacker.consume_ammo(action["ammo"])
             attacker.apply_heat()
-            print(f"{attacker.pilot_name} fired {action['ammo'].value.replace('_', ' ')} ammo for {damage} damage!")
+            ammo_name = action["ammo"].value.replace("_", " ")
 
+            if result.is_crit:
+                msg.append("YOU HIT A VULNERABLE SPOT! \n", style="bold yellow")
+            damage_style = "bold yellow" if result.is_crit else "bold red"
+            msg.append(attacker.pilot_name, style="bold")
+            msg.append(f" fired {ammo_name} for ")
+            msg.append(str(result.damage), style=damage_style)
+            msg.append(" damage!")
+            
         elif action["type"] == ActionType.COOL_DOWN:
             attacker.cool_down()
-            print(f"{attacker.pilot_name} Meka is cooling down!")
+            msg.append(attacker.pilot_name, style="bold")
+            msg.append(" Meka is cooling down!", style="cyan")
 
         elif action["type"] == ActionType.RELOAD:
             attacker.reload_ammo(action["ammo"])
-            print(f"{attacker.pilot_name} Meka reloaded {action['ammo'].value.replace('_', ' ')} ammo!")
+            ammo_name = action["ammo"].value.replace("_", " ")
+            msg.append(attacker.pilot_name, style="bold")
+            msg.append(f" Meka reloaded {ammo_name} ammo!", style="green")
 
         elif action["type"] == ActionType.RECHARGE_SHIELD:
             attacker.recharge_shield()
-            print(f"{attacker.pilot_name} Meka recharged its shields!")
+            msg.append(attacker.pilot_name, style="bold")
+            msg.append(f" Meka recharged its shields!", style="cyan")
+
+        self.log(msg)
 
     def end_game(self) -> None:
         """Display the game-over screen, save the score, and show the leaderboard."""
         clear_screen()
-        print(f"Game Over! You Survived {self.wave} waves.")
-        print("\nFinal Stats")
-        MekaDisplay.render_status(self.player)
+
+        wave_word = "wave" if self.wave == 1 else "waves"
+        console.print(f"[bold red] GAME OVER[/bold red] You survived [bold]{self.wave} {wave_word}[/bold]\n",)
         scores = self.save_score()
-        self.show_leaderboard(scores)
+        Display.show_leaderboard(scores, self.player.pilot_name, self.wave)
         input("\nPress Enter to exit...")
 
     def save_score(self) -> None:
@@ -493,17 +704,6 @@ class Game:
             print(f"Warning: Error loading leaderboard: {e}")
             return []
         
-    def show_leaderboard(self, scores: list[dict[str, str | int]]) -> None:
-        """Print the leaderboard, highlighting the player's current run."""
-        print("\n========================")
-        print("      LEADERBOARD")
-        print("========================")
-        if not scores:
-            print("No scores yet. Be the first to set a record!")
-            return
-        for i, entry in enumerate(scores, 1):
-            arrow = "->" if entry["name"] == self.player.pilot_name and entry["waves"] == self.wave else "  "
-            print(f"{arrow} {i}. {entry['name']:<20} {entry['waves']}  waves       {entry['date']}")
 
     def enemy_pick_ammo(self) -> AmmoType | None:
         """Choose the best ammo type based on the player's current defences.
@@ -575,31 +775,73 @@ class Game:
             attack=attack,
         )
 
-    def pick_ammo(self) -> AmmoType:
-        """Prompt the player to choose an ammo type. Re-prompts on invalid input."""
+    def pick_ammo(self, context: Literal["attack", "reload"] = "attack") -> AmmoType:
+        """Prompt the player to choose an ammo type with contextual status display.
+        
+        Args:
+            context: Controls how ammo status is presented.
+            "attack" empty ammo dims the option
+            "reload" empty ammo his highlighted as a priority candidate.
+            
+        Returns:
+            The chosen AmmoType.
+        """
+        desc_width = max(len(d) for d in AMMO_DESCRIPTIONS.values())
         while True:
-            print("\nChoose ammo type:")
-            print("1. Standard - Can Critically Hit")
-            print("2. Armor Piercing - Double Damage to Armor")
-            print("3. Shield Breaker - Double Damage to Shields")
+            title = "Choose ammo to reload:" if context == "reload" else "Choose ammo type:"
+            console.print(f"\n[bold]{title}[/bold]")
+
+            for key, ammo_type in AMMO_TYPES.items():
+                count = self.player.ammo.get(ammo_type, 0)
+                max_count = AMMO_MAX[ammo_type]
+                desc = AMMO_DESCRIPTIONS[ammo_type]
+                is_empty = count == 0
+                is_low = 0 < count <= LOW_AMMO_THRESHOLD
+
+                #Determine the status tag based on count and context
+                if is_empty:
+                    if context == "reload":
+                        status = f"[bold yellow]{count}/{max_count} <- Reload[/bold yellow]"
+                    else:
+                        status = "EMPTY"
+                elif is_low:
+                    status = f"[red]{count}/{max_count}  LOW[/red]"
+                else:
+                    status = f"[green]{count}/{max_count}[/green]"
+
+                #Dim the entire line in attack context when ammo is empty
+                if is_empty and context == "attack":
+                    console.print(f"  [dim]{key}. {desc:<{desc_width}}  {status}[/dim]")
+                else:
+                    console.print(f"  {key}. {desc:<{desc_width}}  {status}")
+
             choice = input(">> ").strip()
             ammo = AMMO_TYPES.get(choice)
-            if ammo is not None:
-                return ammo
-            print("Invalid choice. Please enter 1, 2, or 3.")
+
+            if ammo is None:
+                console.print("[red]Invalid choice. Please enter 1, 2, or 3.[/red]")
+                continue
+
+            if context == "attack" and not self.player.has_ammo(ammo):
+                ammo_name = AMMO_DESCRIPTIONS[ammo].split(" - ")[0].strip()
+                console.print(f"[red]{ammo_name} is empty! Choose a different type.[/red]")
+                continue
+
+            return ammo
 
 def main() -> None:
     """Entry point - schow the title screen, create the player, and start the game."""
-    print("========================")
-    print("      メカ戦闘")
-    print("========================")
+    console.print(Panel(
+        "[bold magenta]メカ戦闘[/bold magenta]",
+        border_style="magenta",
+        padding=(1,6),
+        expand=False,
+    ))
 
     pilot_name = input("Enter your name, Pilot: ").strip()
     if not pilot_name:
         pilot_name = "Unknown Pilot"
 
-    input("\nPress Enter to battle...")
-    
     player = Meka(
         pilot_name=pilot_name,
         power=PLAYER_START_POWER,
